@@ -4,7 +4,8 @@ import {
   Button, Container, Grid, Paper, Typography, 
   CircularProgress, Snackbar, Alert, Card,
   CardContent, IconButton, Dialog, DialogContent,
-  Box, LinearProgress, List, ListItem, ListItemIcon, ListItemText
+  Box, LinearProgress, List, ListItem, ListItemIcon, ListItemText,
+  useTheme
 } from '@mui/material';
 import {
   CameraAlt as ScanIcon,
@@ -17,13 +18,23 @@ import {
   DocumentScanner,
   PictureAsPdf,
   Image,
-  KeyboardArrowRight
+  KeyboardArrowRight,
+  Close as CloseIcon,
+  CheckCircle as CheckIcon,
+  Save as SaveIcon,
+  Download as DownloadIcon,
+  Folder as FolderIcon,
+  PhotoLibrary as GalleryIcon,
+  Add as AddIcon,
+  MoreVert as MoreIcon
 } from '@mui/icons-material';
 import Tesseract from 'tesseract.js';
 import * as tf from '@tensorflow/tfjs';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf';
 import styles from './SmartScan.module.css';
 import 'pdfjs-dist/build/pdf.worker.entry';
+import { motion, AnimatePresence } from 'framer-motion';
+import jsPDF from 'jspdf';
 
 // Set up PDF.js worker
 if (typeof window !== 'undefined') {
@@ -37,6 +48,7 @@ const API_BASE_URL = 'http://localhost:5000/api';
  * Intelligent learning material management system integrated with HeallyHub
  */
 const SmartScan = () => {
+  const theme = useTheme();
   // State management
   const [scanningStatus, setScanningStatus] = useState({
     isScanning: false,
@@ -57,6 +69,12 @@ const SmartScan = () => {
   const [showImagePreview, setShowImagePreview] = useState(false);
   const [extractedPoints, setExtractedPoints] = useState([]);
   const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
+  const [digitalBinder, setDigitalBinder] = useState({
+    collections: [],
+    activeCollection: null
+  });
+  const [showBinder, setShowBinder] = useState(false);
   
   // Refs
   const fileInputRef = useRef(null);
@@ -99,8 +117,9 @@ const SmartScan = () => {
   /**
    * Handles document scanning using device camera or file upload
    */
-  const handleDocumentScan = () => {
+  const handleDocumentScan = async () => {
     setError(null);
+    setScanningStatus({ isScanning: true, progress: 0, type: 'document' });
     fileInputRef.current?.click();
   };
 
@@ -338,6 +357,441 @@ const SmartScan = () => {
     setNotification(prev => ({ ...prev, open: false }));
   };
 
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 25; // Increased margin for better readability
+    const contentWidth = pageWidth - (margin * 2);
+    const lineHeight = 9; // Increased for 1.5 spacing
+    let y = margin;
+
+    // Add gradient background
+    const gradient = doc.setFillColor(240, 249, 255);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+    // Add header with logo
+    doc.setFontSize(28);
+    doc.setTextColor(13, 71, 161);
+    doc.setFont('Times', 'bold');
+    doc.text('SmartScan', margin, y);
+    
+    // Add subtitle
+    doc.setFontSize(16);
+    doc.setFont('Times', 'italic');
+    doc.setTextColor(70, 90, 120);
+    doc.text('by HeallyHub', margin + 90, y);
+    y += lineHeight * 2;
+
+    // Add decorative line with gradient
+    doc.setDrawColor(13, 71, 161);
+    doc.setLineWidth(0.8);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += lineHeight * 2;
+
+    // Add timestamp with better formatting
+    doc.setFontSize(10);
+    doc.setFont('Times', 'normal');
+    doc.setTextColor(100, 100, 100);
+    const timestamp = new Date().toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+    doc.text(`Generated on ${timestamp}`, margin, y);
+    y += lineHeight * 3;
+
+    // Add document title
+    doc.setFontSize(20);
+    doc.setFont('Times', 'bold');
+    doc.setTextColor(13, 71, 161);
+    doc.text('Document Analysis Results', margin, y);
+    y += lineHeight * 2;
+
+    // Add key points with natural text flow
+    doc.setFontSize(12);
+    doc.setFont('Times', 'normal');
+    doc.setTextColor(0, 0, 0);
+
+    // Function to create natural paragraph flow
+    const createParagraphFlow = (text) => {
+      const words = text.split(' ');
+      let currentLine = '';
+      const lines = [];
+      
+      words.forEach(word => {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testWidth = doc.getStringUnitWidth(testLine) * doc.internal.getFontSize();
+        
+        if (testWidth > contentWidth) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          currentLine = testLine;
+        }
+      });
+      
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      
+      return lines;
+    };
+
+    // Add introduction paragraph
+    doc.setFont('Times', 'bold');
+    doc.text('Key Insights:', margin, y);
+    y += lineHeight * 1.5;
+    doc.setFont('Times', 'normal');
+
+    // Process each key point as a paragraph
+    extractedPoints.forEach((point, index) => {
+      // Add bullet point number
+      doc.setFont('Times', 'bold');
+      doc.text(`${index + 1}.`, margin, y);
+      doc.setFont('Times', 'normal');
+
+      // Create flowing paragraph
+      const lines = createParagraphFlow(point);
+      lines.forEach((line, lineIndex) => {
+        if (y > pageHeight - margin * 3) {
+          doc.addPage();
+          y = margin;
+        }
+        // First line is indented differently from continuation lines
+        const xPos = lineIndex === 0 ? margin + 10 : margin + 15;
+        doc.text(line, xPos, y);
+        y += lineHeight;
+      });
+      y += lineHeight; // Space between paragraphs
+    });
+
+    // Add footer with gradient
+    const footerY = pageHeight - margin;
+    doc.setFillColor(240, 249, 255);
+    doc.rect(0, footerY - 15, pageWidth, 20, 'F');
+
+    // Add footer text
+    doc.setFontSize(8);
+    doc.setTextColor(70, 90, 120);
+    doc.text('Generated by SmartScan - Turning the World into Your Textbook', margin, footerY - 5);
+    doc.text('© HeallyHub ' + new Date().getFullYear(), pageWidth - margin - 40, footerY - 5);
+
+    // Save the PDF
+    const dateStr = new Date().toISOString().split('T')[0];
+    doc.save(`SmartScan-Analysis-${dateStr}.pdf`);
+  };
+
+  const renderScanResult = () => {
+    if (!result) return null;
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        transition={{ duration: 0.3 }}
+      >
+        <Paper 
+          elevation={3} 
+          className={styles.resultCard}
+          sx={{
+            position: 'relative',
+            overflow: 'hidden',
+            background: 'rgba(255, 255, 255, 0.1)',
+            backdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+          }}
+        >
+          <IconButton
+            onClick={() => setResult(null)}
+            sx={{
+              position: 'absolute',
+              right: 8,
+              top: 8,
+              color: 'white',
+              '&:hover': {
+                background: 'rgba(255, 255, 255, 0.1)',
+              },
+            }}
+          >
+            <CloseIcon />
+          </IconButton>
+
+          <Box sx={{ p: 3 }}>
+            <Typography variant="h5" gutterBottom sx={{ 
+              color: 'white',
+              fontWeight: 600,
+              mb: 3,
+              background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              Document Analysis Results
+            </Typography>
+
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ color: '#00ff9d', mb: 2 }}>
+                  Key Points
+                </Typography>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {result.keyPoints.map((point, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <Paper
+                        sx={{
+                          p: 2,
+                          background: 'rgba(0, 255, 157, 0.1)',
+                          border: '1px solid rgba(0, 255, 157, 0.2)',
+                          transition: 'all 0.3s ease',
+                          '&:hover': {
+                            transform: 'translateX(10px)',
+                            background: 'rgba(0, 255, 157, 0.15)',
+                          },
+                        }}
+                      >
+                        <Typography sx={{ color: 'white' }}>
+                          {point}
+                        </Typography>
+                      </Paper>
+                    </motion.div>
+                  ))}
+                </Box>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="h6" sx={{ color: '#00ff9d', mb: 2 }}>
+                  Summary
+                </Typography>
+                <Paper
+                  sx={{
+                    p: 2,
+                    background: 'rgba(0, 255, 157, 0.1)',
+                    border: '1px solid rgba(0, 255, 157, 0.2)',
+                  }}
+                >
+                  <Typography sx={{ color: 'white' }}>
+                    {result.summary}
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleDownloadPDF}
+                    sx={{
+                      background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                      color: 'black',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                      },
+                    }}
+                  >
+                    Download PDF
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<SaveIcon />}
+                    sx={{
+                      background: 'rgba(0, 255, 157, 0.2)',
+                      color: '#00ff9d',
+                      '&:hover': {
+                        background: 'rgba(0, 255, 157, 0.3)',
+                      },
+                    }}
+                  >
+                    Save
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<ShareIcon />}
+                    sx={{
+                      background: 'rgba(0, 255, 157, 0.2)',
+                      color: '#00ff9d',
+                      '&:hover': {
+                        background: 'rgba(0, 255, 157, 0.3)',
+                      },
+                    }}
+                  >
+                    Share
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </Box>
+        </Paper>
+      </motion.div>
+    );
+  };
+
+  const saveToDigitalBinder = async (image, metadata) => {
+    const newItem = {
+      id: Date.now(),
+      image,
+      metadata,
+      timestamp: new Date().toISOString(),
+      tags: [],
+      notes: ''
+    };
+
+    setDigitalBinder(prev => ({
+      ...prev,
+      collections: prev.activeCollection ? 
+        prev.collections.map(c => 
+          c.id === prev.activeCollection.id ? 
+            { ...c, items: [...c.items, newItem] } : c
+        ) : [
+          ...prev.collections,
+          {
+            id: Date.now(),
+            name: 'Untitled Collection',
+            items: [newItem],
+            createdAt: new Date().toISOString()
+          }
+        ]
+    }));
+  };
+
+  const DigitalBinder = () => (
+    <Paper
+      elevation={3}
+      sx={{
+        mt: 4,
+        p: 3,
+        background: 'rgba(255, 255, 255, 0.05)',
+        backdropFilter: 'blur(10px)',
+        border: '1px solid rgba(255, 255, 255, 0.1)'
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h5" sx={{ 
+          color: '#00ff9d',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1
+        }}>
+          <FolderIcon /> Digital Binder
+        </Typography>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={() => {
+            setDigitalBinder(prev => ({
+              ...prev,
+              collections: [
+                ...prev.collections,
+                {
+                  id: Date.now(),
+                  name: `Collection ${prev.collections.length + 1}`,
+                  items: [],
+                  createdAt: new Date().toISOString()
+                }
+              ]
+            }));
+          }}
+          sx={{
+            background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+            color: 'black',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+            }
+          }}
+        >
+          New Collection
+        </Button>
+      </Box>
+
+      <Grid container spacing={3}>
+        {digitalBinder.collections.map((collection) => (
+          <Grid item xs={12} md={4} key={collection.id}>
+            <Paper
+              elevation={2}
+              sx={{
+                p: 2,
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                transition: 'all 0.3s ease',
+                '&:hover': {
+                  transform: 'translateY(-4px)',
+                  boxShadow: '0 8px 24px rgba(0, 255, 157, 0.2)'
+                }
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="h6" sx={{ color: '#00ff9d' }}>
+                  {collection.name}
+                </Typography>
+                <IconButton size="small" sx={{ color: '#00ff9d' }}>
+                  <MoreIcon />
+                </IconButton>
+              </Box>
+
+              <Box sx={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                gap: 1,
+                mb: 2
+              }}>
+                {collection.items.slice(0, 4).map((item) => (
+                  <Box
+                    key={item.id}
+                    sx={{
+                      paddingTop: '100%',
+                      position: 'relative',
+                      overflow: 'hidden',
+                      borderRadius: 1,
+                      background: 'rgba(0, 255, 157, 0.1)',
+                    }}
+                  >
+                    <img
+                      src={item.image}
+                      alt=""
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                  </Box>
+                ))}
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                  {collection.items.length} items
+                </Typography>
+                <Button
+                  size="small"
+                  startIcon={<GalleryIcon />}
+                  sx={{ color: '#00ff9d' }}
+                  onClick={() => setDigitalBinder(prev => ({ ...prev, activeCollection: collection }))}
+                >
+                  View All
+                </Button>
+              </Box>
+            </Paper>
+          </Grid>
+        ))}
+      </Grid>
+    </Paper>
+  );
+
   return (
     <Box sx={{ 
       minHeight: '100vh',
@@ -346,80 +800,120 @@ const SmartScan = () => {
       py: 4
     }}>
       <Container maxWidth="lg">
-        <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 4 }}>
-          SmartScan
-        </Typography>
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Box sx={{ textAlign: 'center', mb: 6 }}>
+            <Typography 
+              variant="h2" 
+              component="h1" 
+              sx={{ 
+                fontWeight: 700,
+                background: 'linear-gradient(45deg, #2196F3 30%, #00ff9d 90%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                textShadow: '0 0 20px rgba(33, 150, 243, 0.3)',
+                animation: 'glow 1.5s ease-in-out infinite alternate',
+                '@keyframes glow': {
+                  from: {
+                    textShadow: '0 0 10px rgba(33, 150, 243, 0.3), 0 0 20px rgba(33, 150, 243, 0.3), 0 0 30px rgba(33, 150, 243, 0.3)'
+                  },
+                  to: {
+                    textShadow: '0 0 20px rgba(33, 150, 243, 0.5), 0 0 30px rgba(33, 150, 243, 0.5), 0 0 40px rgba(33, 150, 243, 0.5)'
+                  }
+                }
+              }}
+            >
+              Welcome to SmartScan
+            </Typography>
+            <Typography 
+              variant="h5" 
+              sx={{ 
+                mt: 2, 
+                color: 'text.secondary',
+                fontStyle: 'italic',
+                opacity: 0.9
+              }}
+            >
+              Turning the World into Your Digital Textbook, One Scan at a Time
+            </Typography>
+          </Box>
+        </motion.div>
 
         {/* Scanning Options */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
           <Grid item xs={12} md={6}>
-            <Paper 
-              elevation={3}
-              sx={{ 
-                p: 3, 
-                textAlign: 'center',
-                transition: 'transform 0.2s',
-                '&:hover': {
-                  transform: 'translateY(-4px)'
-                }
-              }}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".pdf,image/*"
-                style={{ display: 'none' }}
-                onChange={handleFileSelect}
-              />
-              <Button
-                variant="contained"
-                color="primary"
-                size="large"
-                startIcon={<DocumentScanner />}
-                onClick={handleDocumentScan}
-                disabled={scanningStatus.isScanning}
+              <Paper 
+                elevation={3}
                 sx={{ 
-                  minWidth: '200px',
-                  py: 1.5
+                  p: 3, 
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: `0 8px 24px ${theme.palette.primary.main}33`,
+                  }
                 }}
+                onClick={handleDocumentScan}
               >
-                Scan Document (PDF or Image)
-              </Button>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Supports PDF and image files
-              </Typography>
-            </Paper>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  accept=".pdf,image/*"
+                  style={{ display: 'none' }}
+                  onChange={handleFileSelect}
+                />
+                <Typography variant="h5" gutterBottom>
+                  Scan Document (PDF or Image)
+                </Typography>
+                <Typography variant="body1" color="text.secondary">
+                  Supports PDF and image files
+                </Typography>
+              </Paper>
+            </motion.div>
           </Grid>
           <Grid item xs={12} md={6}>
-            <Paper 
-              elevation={3}
-              sx={{ 
-                p: 3, 
-                textAlign: 'center',
-                transition: 'transform 0.2s',
-                '&:hover': {
-                  transform: 'translateY(-4px)'
-                }
-              }}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              <Button
-                variant="contained"
-                color="primary"
-                size="large"
-                startIcon={<ObjectIcon />}
-                onClick={handleObjectScan}
-                disabled={scanningStatus.isScanning}
+              <Paper 
+                elevation={3}
                 sx={{ 
-                  minWidth: '200px',
-                  py: 1.5
+                  p: 3, 
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    boxShadow: `0 8px 24px ${theme.palette.secondary.main}33`,
+                  }
                 }}
+                onClick={handleObjectScan}
               >
-                Scan Object
-              </Button>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                Uses your device camera
-              </Typography>
-            </Paper>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  size="large"
+                  startIcon={<ObjectIcon />}
+                  disabled={scanningStatus.isScanning}
+                  sx={{ 
+                    minWidth: '200px',
+                    py: 1.5
+                  }}
+                >
+                  Scan Object
+                </Button>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Uses your device camera
+                </Typography>
+              </Paper>
+            </motion.div>
           </Grid>
         </Grid>
 
@@ -518,28 +1012,62 @@ const SmartScan = () => {
           <DialogContent>
             {scannedContent && (
               <Box sx={{ p: 2 }}>
-                <Typography variant="h6" gutterBottom>
+                <Typography variant="h6" gutterBottom sx={{
+                  color: '#00ff9d',
+                  fontWeight: 600,
+                  background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                }}>
                   Extracted Key Points
                 </Typography>
                 <List>
                   {extractedPoints.map((point, index) => (
                     <ListItem key={index}>
                       <ListItemIcon>
-                        <KeyboardArrowRight />
+                        <KeyboardArrowRight sx={{ color: '#00ff9d' }} />
                       </ListItemIcon>
-                      <ListItemText primary={point} />
+                      <ListItemText 
+                        primary={point}
+                        sx={{
+                          '& .MuiListItemText-primary': {
+                            color: 'white'
+                          }
+                        }}
+                      />
                     </ListItem>
                   ))}
                 </List>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<ShareIcon />}
-                  onClick={handleShare}
-                  sx={{ mt: 2 }}
-                >
-                  Share with Study Group
-                </Button>
+                <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={<DownloadIcon />}
+                    onClick={handleDownloadPDF}
+                    sx={{
+                      background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                      color: 'black',
+                      '&:hover': {
+                        background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                      },
+                    }}
+                  >
+                    Download PDF
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<ShareIcon />}
+                    onClick={handleShare}
+                    sx={{
+                      background: 'rgba(0, 255, 157, 0.2)',
+                      color: '#00ff9d',
+                      '&:hover': {
+                        background: 'rgba(0, 255, 157, 0.3)',
+                      },
+                    }}
+                  >
+                    Share with Study Group
+                  </Button>
+                </Box>
               </Box>
             )}
           </DialogContent>
@@ -621,6 +1149,25 @@ const SmartScan = () => {
           ))}
         </Grid>
 
+        {/* Digital Binder */}
+        <Button
+          variant="contained"
+          startIcon={<FolderIcon />}
+          onClick={() => setShowBinder(!showBinder)}
+          sx={{
+            mt: 4,
+            background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+            color: 'black',
+            '&:hover': {
+              background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+            }
+          }}
+        >
+          {showBinder ? 'Hide Digital Binder' : 'Show Digital Binder'}
+        </Button>
+
+        {showBinder && <DigitalBinder />}
+
         {/* Hidden Elements */}
         <video ref={videoRef} style={{ display: 'none' }} />
         <canvas ref={canvasRef} style={{ display: 'none' }} />
@@ -641,6 +1188,52 @@ const SmartScan = () => {
             <Typography>{error}</Typography>
           </Paper>
         )}
+
+        <AnimatePresence>
+          {scanningStatus.isScanning && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Paper
+                elevation={3}
+                sx={{
+                  mt: 4,
+                  p: 4,
+                  textAlign: 'center',
+                  position: 'relative',
+                  background: 'rgba(19, 47, 76, 0.8)',
+                  backdropFilter: 'blur(20px)',
+                }}
+              >
+                <CircularProgress
+                  variant="determinate"
+                  value={scanningStatus.progress}
+                  size={80}
+                  thickness={4}
+                  sx={{ 
+                    color: 'primary.main',
+                    '& .MuiCircularProgress-circle': {
+                      strokeLinecap: 'round',
+                    },
+                  }}
+                />
+                <Typography variant="h6" sx={{ mt: 2, fontWeight: 600 }}>
+                  Scanning {scanningStatus.type === 'document' ? 'Document' : 'Object'}...
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  {scanningStatus.progress}% Complete
+                </Typography>
+              </Paper>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {result && renderScanResult()}
+        </AnimatePresence>
       </Container>
     </Box>
   );
