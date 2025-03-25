@@ -1,0 +1,397 @@
+.digital-binder {
+  min-height: 100vh;
+  background: #f7fafc;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.binder-container {
+  display: flex;
+  flex: 1;
+  background: white;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.binder-spine {
+  width: 60px;
+  background: #2d3748;
+  padding: 2rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+  position: fixed;
+  height: 100vh;
+  left: 0;
+  top: 0;
+}
+
+.spine-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 2rem;
+}
+
+.spine-rings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ring {
+  width: 30px;
+  height: 30px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+}
+
+.binder-content {
+  flex: 1;
+  padding: 2rem;
+  margin-left: 60px;
+  overflow-y: auto;
+}
+
+.binder-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.binder-header h1 {
+  color: #2d3748;
+  font-size: 2rem;
+  margin: 0;
+}
+
+.binder-tabs {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 1rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.tab {
+  padding: 0.5rem 1.5rem;
+  border: none;
+  background: none;
+  color: #4a5568;
+  cursor: pointer;
+  font-size: 1rem;
+  position: relative;
+  transition: color 0.3s ease;
+}
+
+.tab.active {
+  color: #2b6cb0;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1rem;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: #2b6cb0;
+}
+
+.course-filter {
+  margin-bottom: 2rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.course-select {
+  width: 100%;
+  max-width: 300px;
+  padding: 0.8rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #2d3748;
+  background: white;
+  cursor: pointer;
+  transition: border-color 0.3s ease;
+}
+
+.course-select:focus {
+  outline: none;
+  border-color: #2b6cb0;
+}
+
+.search-bar {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  background: white;
+  padding: 1rem;
+  border-radius: 10px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.search-input {
+  flex: 1;
+  padding: 0.8rem 1.2rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #2b6cb0;
+}
+
+.add-document {
+  padding: 0.8rem 1.5rem;
+  background: #2b6cb0;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background-color 0.3s ease;
+}
+
+.add-document:hover {
+  background: #2c5282;
+}
+
+.documents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 2rem;
+  padding: 1rem;
+}
+
+.document-card {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.document-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.document-preview {
+  height: 200px;
+  overflow: hidden;
+}
+
+.document-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.document-info {
+  padding: 1rem;
+}
+
+.document-info h3 {
+  margin: 0 0 0.5rem 0;
+  color: #2d3748;
+  font-size: 1.2rem;
+}
+
+.course-tag {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  background: #ebf8ff;
+  color: #2b6cb0;
+  border-radius: 15px;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.subject {
+  display: block;
+  color: #4a5568;
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.date {
+  display: block;
+  color: #718096;
+  font-size: 0.875rem;
+}
+
+.document-actions {
+  padding: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background-color 0.3s ease;
+}
+
+.action-btn.view {
+  background: #ebf8ff;
+  color: #2b6cb0;
+}
+
+.action-btn.view:hover {
+  background: #bee3f8;
+}
+
+.action-btn.edit {
+  background: #f7fafc;
+  color: #4a5568;
+}
+
+.action-btn.edit:hover {
+  background: #edf2f7;
+}
+
+.add-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 2px dashed #e2e8f0;
+  background: #f7fafc;
+}
+
+.add-document-placeholder {
+  text-align: center;
+  color: #4a5568;
+}
+
+.add-document-placeholder .plus {
+  font-size: 2rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.notes-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.notes-content {
+  background: white;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notes-header h2 {
+  margin: 0;
+  color: #2d3748;
+}
+
+.notes-preview {
+  height: 300px;
+  overflow: hidden;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.notes-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.notes-section {
+  padding: 1.5rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-section h3 {
+  margin: 0 0 1rem 0;
+  color: #2d3748;
+}
+
+.notes-textarea {
+  flex: 1;
+  padding: 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  resize: none;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.notes-textarea:focus {
+  outline: none;
+  border-color: #2b6cb0;
+}
+
+.notes-actions {
+  padding: 1.5rem;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #4a5568;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+}
+
+.close-btn:hover {
+  background: #f7fafc;
+} 

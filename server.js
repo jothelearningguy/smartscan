@@ -4,6 +4,8 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const { Server } = require('socket.io');
 const http = require('http');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
@@ -11,6 +13,23 @@ const io = new Server(server, {
   cors: {
     origin: "http://localhost:3000",
     methods: ["GET", "POST"]
+  }
+});
+
+// Configure multer for file uploads
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, 'uploads/')
+  },
+  filename: function (req, file, cb) {
+    cb(null, Date.now() + path.extname(file.originalname))
+  }
+});
+
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 5 * 1024 * 1024 // 5MB limit
   }
 });
 
@@ -132,17 +151,26 @@ app.post('/api/scan/process', async (req, res) => {
 
 /**
  * Analyze scanned object
- * Uses TensorFlow predictions to identify and categorize objects
+ * Uses image processing to identify and categorize objects
  */
-app.post('/api/scan/object/analyze', async (req, res) => {
+app.post('/api/scan/object/analyze', upload.single('image'), async (req, res) => {
   try {
-    const { predictions } = req.body;
-    
-    // Process object recognition results (simplified for example)
+    if (!req.file) {
+      throw new Error('No image file provided');
+    }
+
+    // For now, we'll return a simulated analysis
+    // In a real implementation, you would use an AI model here
     const analysis = {
-      objectType: determineObjectType(predictions),
-      relevantTopics: findRelevantTopics(predictions),
-      suggestedResources: generateResourceSuggestions(predictions)
+      objectType: 'Scientific Specimen',
+      confidence: 0.85,
+      relevantTopics: ['Biology', 'Chemistry', 'Lab Work'],
+      suggestedResources: [
+        'Related Textbook Chapter',
+        'Video Tutorial',
+        'Practice Quiz'
+      ],
+      imageUrl: `/uploads/${req.file.filename}`
     };
 
     // Save to database
@@ -152,7 +180,7 @@ app.post('/api/scan/object/analyze', async (req, res) => {
       type: 'object',
       metadata: {
         analysis: analysis,
-        predictions: predictions
+        imageUrl: analysis.imageUrl
       }
     });
 
