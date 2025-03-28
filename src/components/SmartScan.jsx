@@ -5,7 +5,7 @@ import {
   CircularProgress, Snackbar, Alert, Card,
   CardContent, IconButton, Dialog, DialogContent,
   Box, LinearProgress, List, ListItem, ListItemIcon, ListItemText,
-  useTheme
+  useTheme, DialogTitle, DialogActions, TextField
 } from '@mui/material';
 import {
   CameraAlt as ScanIcon,
@@ -15,9 +15,6 @@ import {
   Schedule as ScheduleIcon,
   CameraAlt,
   Check,
-  DocumentScanner,
-  PictureAsPdf,
-  Image,
   KeyboardArrowRight,
   Close as CloseIcon,
   CheckCircle as CheckIcon,
@@ -26,7 +23,10 @@ import {
   Folder as FolderIcon,
   PhotoLibrary as GalleryIcon,
   Add as AddIcon,
-  MoreVert as MoreIcon
+  MoreVert as MoreIcon,
+  Upload as UploadIcon,
+  Camera as CameraIcon,
+  SmartToy as SmartToyIcon
 } from '@mui/icons-material';
 import Tesseract from 'tesseract.js';
 import * as tf from '@tensorflow/tfjs';
@@ -35,6 +35,9 @@ import styles from './SmartScan.module.css';
 import 'pdfjs-dist/build/pdf.worker.entry';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';
+import { DocumentAI } from './ai/DocumentAI';
+import { OrganizationAI } from './ai/OrganizationAI';
+import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 
 // Set up PDF.js worker
 if (typeof window !== 'undefined') {
@@ -53,7 +56,7 @@ const SmartScan = () => {
   const [scanningStatus, setScanningStatus] = useState({
     isScanning: false,
     progress: 0,
-    type: null // 'document' or 'object'
+    type: null
   });
   const [scannedContent, setScannedContent] = useState(null);
   const [notification, setNotification] = useState({
@@ -75,44 +78,54 @@ const SmartScan = () => {
     activeCollection: null
   });
   const [showBinder, setShowBinder] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [showStudyGroupDialog, setShowStudyGroupDialog] = useState(false);
+  const [newGroupName, setNewGroupName] = useState('');
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [aiChat, setAiChat] = useState([]);
+  const [userInput, setUserInput] = useState('');
+  const [studyGroups, setStudyGroups] = useState([]);
+  const [showHeallyDialog, setShowHeallyDialog] = useState(false);
+  const [heallyProjects, setHeallyProjects] = useState([]);
+  const [showFolderDialog, setShowFolderDialog] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [showFileViewer, setShowFileViewer] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
   
   // Refs
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const imageRef = useRef(null);
 
   // Load TensorFlow model on component mount
   useEffect(() => {
-    loadTensorFlowModel();
-    fetchStudyMaterials();
+    const loadModel = async () => {
+      try {
+        const model = await tf.loadGraphModel('/models/object_detection/model.json');
+        window.tfModel = model;
+      } catch (err) {
+        console.error('Error loading TensorFlow model:', err);
+        showNotification('Failed to load object recognition model', 'error');
+      }
+    };
+
+    const fetchMaterials = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/study/materials`);
+        setStudyMaterials(response.data);
+      } catch (err) {
+        console.error('Error fetching study materials:', err);
+        showNotification('Failed to load study materials', 'error');
+      }
+    };
+
+    loadModel();
+    fetchMaterials();
   }, []);
-
-  /**
-   * Loads and initializes the TensorFlow model for object recognition
-   */
-  const loadTensorFlowModel = async () => {
-    try {
-      const model = await tf.loadGraphModel('/models/object_detection/model.json');
-      // Store model in ref for later use
-      window.tfModel = model;
-    } catch (err) {
-      console.error('Error loading TensorFlow model:', err);
-      showNotification('Failed to load object recognition model', 'error');
-    }
-  };
-
-  /**
-   * Fetches existing study materials from HeallyHub
-   */
-  const fetchStudyMaterials = async () => {
-    try {
-      const response = await axios.get(`${API_BASE_URL}/study/materials`);
-      setStudyMaterials(response.data);
-    } catch (err) {
-      console.error('Error fetching study materials:', err);
-      showNotification('Failed to load study materials', 'error');
-    }
-  };
 
   /**
    * Handles document scanning using device camera or file upload
@@ -197,9 +210,13 @@ const SmartScan = () => {
         throw new Error('No text could be extracted from the document. Please try a different file.');
       }
 
-      const points = extractKeyPoints(text);
-      setExtractedPoints(points);
+      // Process the extracted text
+      const processedContent = await processScannedContent(text);
+      
+      // Update state with results
+      setExtractedPoints(processedContent.keyPoints || extractKeyPoints(text));
       setScannedContent(text);
+      setResult(processedContent);
       setShowPreview(true);
     } catch (err) {
       console.error('Error scanning document:', err);
@@ -296,11 +313,68 @@ const SmartScan = () => {
   const processScannedContent = async (text) => {
     setProcessingStatus('processing');
     try {
-      const response = await axios.post(`${API_BASE_URL}/scan/process`, { content: text });
+      console.log('Starting document processing...');
+      
+      // Split text into chunks for faster processing
+      const chunkSize = 1000; // Process 1000 characters at a time
+      const chunks = text.match(new RegExp(`.{1,${chunkSize}}`, 'g')) || [];
+      let processedContent = {
+        keyPoints: [],
+        summary: '',
+        categories: [],
+        tags: [],
+        suggestions: []
+      };
+
+      // Process each chunk with progress updates
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const progress = ((i + 1) / chunks.length) * 100;
+        
+        // Update progress status
+        setScanningStatus(prev => ({
+          ...prev,
+          progress: progress
+        }));
+
+        // Process chunk with DocumentAI
+        const chunkAnalysis = await DocumentAI.analyzeDocument(chunk);
+        
+        // Merge results
+        processedContent.keyPoints = [...new Set([...processedContent.keyPoints, ...chunkAnalysis.keyPoints])];
+        processedContent.summary += chunkAnalysis.summary + ' ';
+        
+        // Process every 3 chunks with OrganizationAI to reduce API calls
+        if ((i + 1) % 3 === 0 || i === chunks.length - 1) {
+          const organization = await OrganizationAI.categorizeContent([{
+            type: 'document',
+            text: chunks.slice(Math.max(0, i - 2), i + 1).join(' '),
+            id: Date.now(),
+            createdAt: new Date().toISOString()
+          }]);
+
+          processedContent.categories = [...new Set([...processedContent.categories, ...organization.categories])];
+          processedContent.tags = [...new Set([...processedContent.tags, ...organization.tags])];
+          processedContent.suggestions = [...new Set([...processedContent.suggestions, ...organization.suggestions])];
+        }
+      }
+
+      // Clean up and format results
+      processedContent = {
+        ...processedContent,
+        keyPoints: processedContent.keyPoints.slice(0, 5), // Keep top 5 key points
+        summary: processedContent.summary.trim(),
+        categories: processedContent.categories.slice(0, 3), // Keep top 3 categories
+        tags: processedContent.tags.slice(0, 5), // Keep top 5 tags
+        suggestions: processedContent.suggestions.slice(0, 3) // Keep top 3 suggestions
+      };
+
+      console.log('Analysis complete:', processedContent);
       setProcessingStatus('complete');
-      return response.data;
+      return processedContent;
     } catch (err) {
       console.error('Error processing content:', err);
+      console.error('Error details:', err.response?.data || err.message);
       setProcessingStatus('error');
       throw err;
     }
@@ -636,413 +710,905 @@ const SmartScan = () => {
     );
   };
 
-  const saveToDigitalBinder = async (image, metadata) => {
-    const newItem = {
-      id: Date.now(),
-      image,
-      metadata,
-      timestamp: new Date().toISOString(),
-      tags: [],
-      notes: ''
-    };
+  const saveToDigitalBinder = async (item) => {
+    try {
+      // Get the current active collection
+      const activeCollection = digitalBinder.activeCollection;
+      
+      if (!activeCollection) {
+        // If no active collection, create a new one
+        const newCollection = {
+          id: Date.now(),
+          name: `Collection ${digitalBinder.collections.length + 1}`,
+          items: [item],
+          createdAt: new Date().toISOString()
+        };
+        
+        setDigitalBinder(prev => ({
+          ...prev,
+          collections: [...prev.collections, newCollection],
+          activeCollection: newCollection.id
+        }));
+      } else {
+        // Add item to existing collection
+        setDigitalBinder(prev => ({
+          ...prev,
+          collections: prev.collections.map(collection => 
+            collection.id === activeCollection
+              ? { ...collection, items: [...collection.items, item] }
+              : collection
+          )
+        }));
+      }
+      
+      // Organize content using AI
+      const organization = await OrganizationAI.categorizeContent(
+        Object.values(digitalBinder.collections).flatMap(c => c.items)
+      );
+      
+      // Update binder with AI suggestions
+      setDigitalBinder(prev => ({
+        ...prev,
+        categories: organization.categories,
+        tags: organization.tags,
+        suggestions: organization.suggestions
+      }));
+    } catch (error) {
+      console.error('Error saving to digital binder:', error);
+      setError('Failed to save to digital binder. Please try again.');
+    }
+  };
 
+  const onDragEnd = (result) => {
+    if (!result.destination) return;
+
+    const { source, destination } = result;
+    
+    // Handle dragging from preview to collection
+    if (source.droppableId === 'preview') {
+      const item = {
+        id: Date.now(),
+        text: extractedPoints[source.index],
+        type: 'text',
+        createdAt: new Date().toISOString()
+      };
+      
+      const destCollection = digitalBinder.collections.find(c => c.id.toString() === destination.droppableId);
+      if (destCollection) {
+        setDigitalBinder(prev => ({
+          ...prev,
+          collections: prev.collections.map(collection =>
+            collection.id.toString() === destination.droppableId
+              ? {
+                  ...collection,
+                  items: [
+                    ...collection.items.slice(0, destination.index),
+                    item,
+                    ...collection.items.slice(destination.index)
+                  ]
+                }
+              : collection
+          )
+        }));
+      }
+      return;
+    }
+
+    // Handle dragging between collections
+    const sourceCollection = digitalBinder.collections.find(c => c.id.toString() === source.droppableId);
+    const destCollection = digitalBinder.collections.find(c => c.id.toString() === destination.droppableId);
+    const [movedItem] = sourceCollection.items.splice(source.index, 1);
+    
     setDigitalBinder(prev => ({
       ...prev,
-      collections: prev.activeCollection ? 
-        prev.collections.map(c => 
-          c.id === prev.activeCollection.id ? 
-            { ...c, items: [...c.items, newItem] } : c
-        ) : [
-          ...prev.collections,
-          {
-            id: Date.now(),
-            name: 'Untitled Collection',
-            items: [newItem],
-            createdAt: new Date().toISOString()
-          }
-        ]
+      collections: prev.collections.map(collection => {
+        if (collection.id.toString() === source.droppableId) {
+          return {
+            ...collection,
+            items: collection.items.filter((_, index) => index !== source.index)
+          };
+        }
+        if (collection.id.toString() === destination.droppableId) {
+          const newItems = [...collection.items];
+          newItems.splice(destination.index, 0, movedItem);
+          return {
+            ...collection,
+            items: newItems
+          };
+        }
+        return collection;
+      })
     }));
   };
 
-  const DigitalBinder = () => (
-    <Paper
-      elevation={3}
-      sx={{
-        mt: 4,
-        p: 3,
-        background: 'rgba(255, 255, 255, 0.05)',
-        backdropFilter: 'blur(10px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)'
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h5" sx={{ 
-          color: '#00ff9d',
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1
-        }}>
-          <FolderIcon /> Digital Binder
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={() => {
-            setDigitalBinder(prev => ({
-              ...prev,
-              collections: [
-                ...prev.collections,
-                {
-                  id: Date.now(),
-                  name: `Collection ${prev.collections.length + 1}`,
-                  items: [],
-                  createdAt: new Date().toISOString()
-                }
-              ]
-            }));
-          }}
-          sx={{
-            background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
-            color: 'black',
-            '&:hover': {
-              background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
-            }
-          }}
-        >
-          New Collection
-        </Button>
-      </Box>
+  const DigitalBinder = () => {
+    return (
+      <Paper
+        elevation={3}
+        sx={{
+          mt: 4,
+          p: 3,
+          background: 'rgba(255, 255, 255, 0.05)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+          <Typography variant="h5" sx={{ 
+            color: '#00ff9d',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}>
+            <FolderIcon /> Digital Binder
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setShowFolderDialog(true)}
+            sx={{
+              background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+              color: 'black',
+              '&:hover': {
+                background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+              }
+            }}
+          >
+            New Folder
+          </Button>
+        </Box>
 
-      <Grid container spacing={3}>
-        {digitalBinder.collections.map((collection) => (
-          <Grid item xs={12} md={4} key={collection.id}>
-            <Paper
-              elevation={2}
-              sx={{
-                p: 2,
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                transition: 'all 0.3s ease',
-                '&:hover': {
-                  transform: 'translateY(-4px)',
-                  boxShadow: '0 8px 24px rgba(0, 255, 157, 0.2)'
-                }
-              }}
-            >
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-                <Typography variant="h6" sx={{ color: '#00ff9d' }}>
-                  {collection.name}
-                </Typography>
-                <IconButton size="small" sx={{ color: '#00ff9d' }}>
-                  <MoreIcon />
-                </IconButton>
-              </Box>
+        <Grid container spacing={3}>
+          {digitalBinder.collections.map((collection) => (
+            <Grid item xs={12} md={4} key={collection.id}>
+              <Paper
+                elevation={2}
+                sx={{
+                  p: 2,
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  transition: 'all 0.3s ease',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 8px 24px rgba(0, 255, 157, 0.2)'
+                  }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                  <Typography variant="h6" sx={{ color: '#00ff9d' }}>
+                    {collection.name}
+                  </Typography>
+                  <IconButton size="small" sx={{ color: '#00ff9d' }}>
+                    <MoreIcon />
+                  </IconButton>
+                </Box>
 
-              <Box sx={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
-                gap: 1,
-                mb: 2
+                <Droppable droppableId={collection.id.toString()}>
+                  {(provided) => (
+                    <Box
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      sx={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+                        gap: 1,
+                        mb: 2,
+                        minHeight: '80px',
+                        background: 'rgba(0, 255, 157, 0.05)',
+                        borderRadius: 1,
+                        p: 1
+                      }}
+                    >
+                      {collection.items.map((item, index) => (
+                        <Draggable key={item.id} draggableId={item.id.toString()} index={index}>
+                          {(provided, snapshot) => (
+                            <Box
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              sx={{
+                                paddingTop: '100%',
+                                position: 'relative',
+                                overflow: 'hidden',
+                                borderRadius: 1,
+                                background: snapshot.isDragging 
+                                  ? 'rgba(0, 255, 157, 0.2)' 
+                                  : 'rgba(0, 255, 157, 0.1)',
+                                transform: snapshot.isDragging ? 'scale(1.05)' : 'scale(1)',
+                                transition: 'all 0.2s ease',
+                                cursor: 'grab',
+                                '&:active': {
+                                  cursor: 'grabbing'
+                                }
+                              }}
+                            >
+                              {item.type === 'text' ? (
+                                <Box
+                                  sx={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    p: 1,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    textAlign: 'center',
+                                    fontSize: '0.8rem',
+                                    color: 'white',
+                                    overflow: 'hidden'
+                                  }}
+                                >
+                                  {item.text}
+                                </Box>
+                              ) : (
+                                <img
+                                  src={item.image}
+                                  alt=""
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover'
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </Box>
+                  )}
+                </Droppable>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                    {collection.items.length} items
+                  </Typography>
+                  <Button
+                    size="small"
+                    startIcon={<GalleryIcon />}
+                    sx={{ color: '#00ff9d' }}
+                    onClick={() => setSelectedFolder(collection)}
+                  >
+                    View All
+                  </Button>
+                </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+      </Paper>
+    );
+  };
+
+  const handleScan = async () => {
+    if (!file) return;
+    
+    setScanning(true);
+    try {
+      // Process the file
+      await handleFileSelect({ target: { files: [file] } });
+    } catch (error) {
+      console.error('Scan failed:', error);
+      setError('Failed to process the file. Please try again.');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleFileUpload = (event) => {
+    const uploadedFile = event.target.files[0];
+    if (uploadedFile) {
+      setFile(uploadedFile);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result);
+      };
+      reader.readAsDataURL(uploadedFile);
+    }
+  };
+
+  const createStudyGroup = () => {
+    if (!newGroupName.trim()) return;
+    
+    const newGroup = {
+      id: Date.now(),
+      name: newGroupName,
+      members: [],
+      collections: [],
+      createdAt: new Date().toISOString()
+    };
+    
+    setStudyGroups(prev => [...prev, newGroup]);
+    setNewGroupName('');
+    setShowStudyGroupDialog(false);
+  };
+
+  const shareCollectionWithGroup = (collectionId, groupId) => {
+    setStudyGroups(prev => prev.map(group => 
+      group.id === groupId
+        ? { ...group, collections: [...group.collections, collectionId] }
+        : group
+    ));
+  };
+
+  const handleAIAssistantChat = async () => {
+    if (!userInput.trim()) return;
+
+    const userMessage = {
+      type: 'user',
+      content: userInput,
+      timestamp: new Date().toISOString()
+    };
+
+    setAiChat(prev => [...prev, userMessage]);
+    setUserInput('');
+
+    // Simulate AI response
+    const aiResponse = {
+      type: 'ai',
+      content: `I understand you're interested in ${userInput}. Let me help you with that. Would you like to:
+        1. View specific content from your collections?
+        2. Get study recommendations?
+        3. Create a new study group?
+        4. Generate practice questions?`,
+      timestamp: new Date().toISOString()
+    };
+
+    setTimeout(() => {
+      setAiChat(prev => [...prev, aiResponse]);
+    }, 1000);
+  };
+
+  const PreviewDialog = ({ open, onClose, scannedContent, extractedPoints, onSaveToCollection }) => {
+    return (
+      <Dialog 
+        open={open} 
+        onClose={onClose} 
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogContent>
+          {scannedContent && (
+            <Box sx={{ p: 2 }}>
+              <Typography variant="h6" gutterBottom sx={{
+                color: '#00ff9d',
+                fontWeight: 600,
+                background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
               }}>
-                {collection.items.slice(0, 4).map((item) => (
-                  <Box
-                    key={item.id}
+                Extracted Key Points
+              </Typography>
+              <Droppable droppableId="preview">
+                {(provided) => (
+                  <List
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
                     sx={{
-                      paddingTop: '100%',
-                      position: 'relative',
-                      overflow: 'hidden',
+                      minHeight: '100px',
+                      background: 'rgba(0, 255, 157, 0.05)',
                       borderRadius: 1,
-                      background: 'rgba(0, 255, 157, 0.1)',
+                      p: 1
                     }}
                   >
-                    <img
-                      src={item.image}
-                      alt=""
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
+                    {extractedPoints.map((point, index) => (
+                      <Draggable key={index} draggableId={`preview-${index}`} index={index}>
+                        {(provided, snapshot) => (
+                          <ListItem
+                            ref={provided.innerRef}
+                            {...provided.draggableProps}
+                            {...provided.dragHandleProps}
+                            sx={{
+                              background: snapshot.isDragging 
+                                ? 'rgba(0, 255, 157, 0.2)' 
+                                : 'rgba(0, 255, 157, 0.1)',
+                              borderRadius: 1,
+                              mb: 1,
+                              cursor: 'grab',
+                              '&:active': {
+                                cursor: 'grabbing'
+                              },
+                              transform: snapshot.isDragging ? 'scale(1.02)' : 'scale(1)',
+                              transition: 'all 0.2s ease'
+                            }}
+                          >
+                            <ListItemIcon>
+                              <KeyboardArrowRight sx={{ color: '#00ff9d' }} />
+                            </ListItemIcon>
+                            <ListItemText 
+                              primary={point}
+                              sx={{
+                                '& .MuiListItemText-primary': {
+                                  color: 'white'
+                                }
+                              }}
+                            />
+                          </ListItem>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                  </List>
+                )}
+              </Droppable>
+              <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<DownloadIcon />}
+                  onClick={handleDownloadPDF}
+                  sx={{
+                    background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                    color: 'black',
+                    '&:hover': {
+                      background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                    },
+                  }}
+                >
+                  Download PDF
+                </Button>
+                <Button
+                  variant="contained"
+                  startIcon={<ShareIcon />}
+                  onClick={handleShare}
+                  sx={{
+                    background: 'rgba(0, 255, 157, 0.2)',
+                    color: '#00ff9d',
+                    '&:hover': {
+                      background: 'rgba(0, 255, 157, 0.3)',
+                    },
+                  }}
+                >
+                  Share with Study Group
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  };
+
+  const fetchHeallyProjects = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/heally/projects`);
+      setHeallyProjects(response.data);
+    } catch (err) {
+      console.error('Error fetching HEALLY projects:', err);
+      showNotification('Failed to load HEALLY projects', 'error');
+    }
+  };
+
+  const sendToHeally = async (projectId) => {
+    try {
+      await axios.post(`${API_BASE_URL}/heally/share`, {
+        projectId,
+        content: scannedContent,
+        analysis: result
+      });
+      showNotification('Content sent to HEALLY successfully', 'success');
+      setShowHeallyDialog(false);
+    } catch (err) {
+      console.error('Error sending to HEALLY:', err);
+      showNotification('Failed to send content to HEALLY', 'error');
+    }
+  };
+
+  const createFolder = async () => {
+    if (!newFolderName.trim()) return;
+    
+    try {
+      const response = await axios.post(`${API_BASE_URL}/folders`, {
+        name: newFolderName,
+        description: '',
+        createdAt: new Date().toISOString()
+      });
+      
+      setDigitalBinder(prev => ({
+        ...prev,
+        collections: [...prev.collections, response.data]
+      }));
+      
+      setNewFolderName('');
+      setShowFolderDialog(false);
+      showNotification('Folder created successfully', 'success');
+    } catch (err) {
+      console.error('Error creating folder:', err);
+      showNotification('Failed to create folder', 'error');
+    }
+  };
+
+  const handleFileView = (file) => {
+    setSelectedFile(file);
+    setShowFileViewer(true);
+  };
+
+  return (
+    <DragDropContext onDragEnd={onDragEnd}>
+      <Container maxWidth="lg" className={styles.container}>
+        <Grid container spacing={3}>
+          {/* Main Content */}
+          <Grid item xs={12} md={8}>
+            <Paper className={styles.mainContent}>
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5 }}
+              >
+                <Box sx={{ textAlign: 'center', mb: 6 }}>
+                  <Typography 
+                    variant="h2" 
+                    component="h1" 
+                    sx={{ 
+                      fontWeight: 700,
+                      background: 'linear-gradient(45deg, #2196F3 30%, #00ff9d 90%)',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent',
+                      textShadow: '0 0 20px rgba(33, 150, 243, 0.3)',
+                      animation: 'glow 1.5s ease-in-out infinite alternate',
+                      '@keyframes glow': {
+                        from: {
+                          textShadow: '0 0 10px rgba(33, 150, 243, 0.3), 0 0 20px rgba(33, 150, 243, 0.3), 0 0 30px rgba(33, 150, 243, 0.3)'
+                        },
+                        to: {
+                          textShadow: '0 0 20px rgba(33, 150, 243, 0.5), 0 0 30px rgba(33, 150, 243, 0.5), 0 0 40px rgba(33, 150, 243, 0.5)'
+                        }
+                      }
+                    }}
+                  >
+                    Welcome to SmartScan
+                  </Typography>
+                  <Typography 
+                    variant="h5" 
+                    sx={{ 
+                      mt: 2, 
+                      color: 'text.secondary',
+                      fontStyle: 'italic',
+                      opacity: 0.9
+                    }}
+                  >
+                    Turning the World into Your Digital Textbook, One Scan at a Time
+                  </Typography>
+                </Box>
+              </motion.div>
+
+              {/* Upload Area */}
+              <Paper 
+                elevation={3}
+                sx={{
+                  p: 3,
+                  background: 'rgba(42, 42, 42, 0.8)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 2,
+                }}
+              >
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 3,
+                  }}
+                >
+                  {/* Upload Area */}
+                  <Box
+                    sx={{
+                      width: '100%',
+                      height: 300,
+                      border: '2px dashed rgba(0, 255, 157, 0.3)',
+                      borderRadius: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        borderColor: '#00ff9d',
+                        background: 'rgba(0, 255, 157, 0.05)',
+                      },
+                      position: 'relative',
+                      overflow: 'hidden',
+                    }}
+                    component="label"
+                  >
+                    <input
+                      type="file"
+                      hidden
+                      onChange={handleFileUpload}
+                      accept="image/*,.pdf"
+                    />
+                    
+                    {preview ? (
+                      <Box
+                        component="img"
+                        src={preview}
+                        sx={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'contain',
+                        }}
+                      />
+                    ) : (
+                      <>
+                        <UploadIcon sx={{ fontSize: 48, color: '#00ff9d', mb: 2 }} />
+                        <Typography variant="h6" color="primary">
+                          Drop files here or click to upload
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                          Supports PDF and image files
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
+
+                  {/* Action Buttons */}
+                  <Box sx={{ display: 'flex', gap: 2, width: '100%', justifyContent: 'center' }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<UploadIcon />}
+                      component="label"
+                      sx={{
+                        background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                        color: 'black',
+                        '&:hover': {
+                          background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                        },
+                      }}
+                    >
+                      Upload File
+                      <input
+                        type="file"
+                        hidden
+                        onChange={handleFileUpload}
+                        accept="image/*,.pdf"
+                      />
+                    </Button>
+                    
+                    <Button
+                      variant="contained"
+                      startIcon={<CameraIcon />}
+                      onClick={() => {/* Camera functionality will be added */}}
+                      sx={{
+                        background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                        color: 'black',
+                        '&:hover': {
+                          background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                        },
+                      }}
+                    >
+                      Use Camera
+                    </Button>
+                  </Box>
+
+                  {/* Scan Button */}
+                  {file && (
+                    <Button
+                      variant="contained"
+                      onClick={handleScan}
+                      disabled={scanning}
+                      sx={{
                         width: '100%',
-                        height: '100%',
-                        objectFit: 'cover'
+                        py: 1.5,
+                        background: scanning ? 'grey' : 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                        color: 'black',
+                        '&:hover': {
+                          background: scanning ? 'grey' : 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                        },
+                      }}
+                    >
+                      {scanning ? (
+                        <>
+                          <CircularProgress size={24} sx={{ mr: 1 }} />
+                          Analyzing...
+                        </>
+                      ) : (
+                        'Start Analysis'
+                      )}
+                    </Button>
+                  )}
+                </Box>
+              </Paper>
+
+              {/* Camera Preview */}
+              {showCamera && (
+                <Paper 
+                  elevation={3}
+                  sx={{ 
+                    p: 3, 
+                    textAlign: 'center',
+                    mb: 4
+                  }}
+                >
+                  <Box sx={{ position: 'relative', display: 'inline-block' }}>
+                    <video
+                      ref={videoRef}
+                      autoPlay
+                      playsInline
+                      style={{ 
+                        maxWidth: '100%',
+                        maxHeight: '400px',
+                        borderRadius: '8px'
+                      }}
+                    />
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '200px',
+                        height: '200px',
+                        border: '2px solid #fff',
+                        borderRadius: '50%',
+                        pointerEvents: 'none'
                       }}
                     />
                   </Box>
-                ))}
-              </Box>
+                  <Typography variant="body1" sx={{ mt: 2 }}>
+                    Position the object in the frame. Capturing in 2 seconds...
+                  </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={50}
+                    sx={{ 
+                      width: '100%', 
+                      mt: 2,
+                      height: 4,
+                      borderRadius: 2,
+                      backgroundColor: 'rgba(255, 255, 255, 0.2)',
+                      '& .MuiLinearProgress-bar': {
+                        backgroundColor: '#fff',
+                      }
+                    }}
+                  />
+                </Paper>
+              )}
 
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                  {collection.items.length} items
-                </Typography>
-                <Button
-                  size="small"
-                  startIcon={<GalleryIcon />}
-                  sx={{ color: '#00ff9d' }}
-                  onClick={() => setDigitalBinder(prev => ({ ...prev, activeCollection: collection }))}
-                >
-                  View All
-                </Button>
-              </Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-    </Paper>
-  );
-
-  return (
-    <Box sx={{ 
-      minHeight: '100vh',
-      bgcolor: 'background.default',
-      overflowY: 'auto',
-      py: 4
-    }}>
-      <Container maxWidth="lg">
-        <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.5 }}
-        >
-          <Box sx={{ textAlign: 'center', mb: 6 }}>
-            <Typography 
-              variant="h2" 
-              component="h1" 
-              sx={{ 
-                fontWeight: 700,
-                background: 'linear-gradient(45deg, #2196F3 30%, #00ff9d 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                textShadow: '0 0 20px rgba(33, 150, 243, 0.3)',
-                animation: 'glow 1.5s ease-in-out infinite alternate',
-                '@keyframes glow': {
-                  from: {
-                    textShadow: '0 0 10px rgba(33, 150, 243, 0.3), 0 0 20px rgba(33, 150, 243, 0.3), 0 0 30px rgba(33, 150, 243, 0.3)'
-                  },
-                  to: {
-                    textShadow: '0 0 20px rgba(33, 150, 243, 0.5), 0 0 30px rgba(33, 150, 243, 0.5), 0 0 40px rgba(33, 150, 243, 0.5)'
-                  }
-                }
-              }}
-            >
-              Welcome to SmartScan
-            </Typography>
-            <Typography 
-              variant="h5" 
-              sx={{ 
-                mt: 2, 
-                color: 'text.secondary',
-                fontStyle: 'italic',
-                opacity: 0.9
-              }}
-            >
-              Turning the World into Your Digital Textbook, One Scan at a Time
-            </Typography>
-          </Box>
-        </motion.div>
-
-        {/* Scanning Options */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Paper 
-                elevation={3}
-                sx={{ 
-                  p: 3, 
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    boxShadow: `0 8px 24px ${theme.palette.primary.main}33`,
-                  }
-                }}
-                onClick={handleDocumentScan}
-              >
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept=".pdf,image/*"
-                  style={{ display: 'none' }}
-                  onChange={handleFileSelect}
-                />
-                <Typography variant="h5" gutterBottom>
-                  Scan Document (PDF or Image)
-                </Typography>
-                <Typography variant="body1" color="text.secondary">
-                  Supports PDF and image files
-                </Typography>
-              </Paper>
-            </motion.div>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <motion.div
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              <Paper 
-                elevation={3}
-                sx={{ 
-                  p: 3, 
-                  textAlign: 'center',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    boxShadow: `0 8px 24px ${theme.palette.secondary.main}33`,
-                  }
-                }}
-                onClick={handleObjectScan}
-              >
-                <Button
-                  variant="contained"
-                  color="primary"
-                  size="large"
-                  startIcon={<ObjectIcon />}
-                  disabled={scanningStatus.isScanning}
+              {/* Scanning Progress */}
+              {scanningStatus.isScanning && (
+                <Paper 
+                  elevation={3}
                   sx={{ 
-                    minWidth: '200px',
-                    py: 1.5
+                    p: 3, 
+                    textAlign: 'center',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 2,
+                    mb: 4
                   }}
                 >
-                  Scan Object
-                </Button>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  Uses your device camera
-                </Typography>
-              </Paper>
-            </motion.div>
-          </Grid>
-        </Grid>
+                  <CircularProgress 
+                    variant="determinate" 
+                    value={scanningStatus.progress}
+                    size={60}
+                  />
+                  <Typography>
+                    {scanningStatus.type === 'document' ? 'Scanning document...' : 'Analyzing object...'}
+                  </Typography>
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={scanningStatus.progress}
+                    sx={{ width: '100%', mt: 2 }}
+                  />
+                </Paper>
+              )}
 
-        {/* Camera Preview */}
-        {showCamera && (
-          <Paper 
-            elevation={3}
-            sx={{ 
-              p: 3, 
-              textAlign: 'center',
-              mb: 4
-            }}
-          >
-            <Box sx={{ position: 'relative', display: 'inline-block' }}>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                style={{ 
-                  maxWidth: '100%',
-                  maxHeight: '400px',
-                  borderRadius: '8px'
+              {/* Preview Dialog */}
+              <PreviewDialog 
+                open={showPreview}
+                onClose={() => setShowPreview(false)}
+                scannedContent={scannedContent}
+                extractedPoints={extractedPoints}
+                onSaveToCollection={(item) => {
+                  const activeCollection = digitalBinder.collections.find(c => c.id === digitalBinder.activeCollection);
+                  if (activeCollection) {
+                    setDigitalBinder(prev => ({
+                      ...prev,
+                      collections: prev.collections.map(collection =>
+                        collection.id === activeCollection.id
+                          ? { ...collection, items: [...collection.items, item] }
+                          : collection
+                      )
+                    }));
+                  }
                 }}
               />
-              <Box
-                sx={{
-                  position: 'absolute',
-                  top: '50%',
-                  left: '50%',
-                  transform: 'translate(-50%, -50%)',
-                  width: '200px',
-                  height: '200px',
-                  border: '2px solid #fff',
-                  borderRadius: '50%',
-                  pointerEvents: 'none'
-                }}
-              />
-            </Box>
-            <Typography variant="body1" sx={{ mt: 2 }}>
-              Position the object in the frame. Capturing in 2 seconds...
-            </Typography>
-            <LinearProgress 
-              variant="determinate" 
-              value={50}
-              sx={{ 
-                width: '100%', 
-                mt: 2,
-                height: 4,
-                borderRadius: 2,
-                backgroundColor: 'rgba(255, 255, 255, 0.2)',
-                '& .MuiLinearProgress-bar': {
-                  backgroundColor: '#fff',
-                }
-              }}
-            />
-          </Paper>
-        )}
 
-        {/* Scanning Progress */}
-        {scanningStatus.isScanning && (
-          <Paper 
-            elevation={3}
-            sx={{ 
-              p: 3, 
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: 2,
-              mb: 4
-            }}
-          >
-            <CircularProgress 
-              variant="determinate" 
-              value={scanningStatus.progress}
-              size={60}
-            />
-            <Typography>
-              {scanningStatus.type === 'document' ? 'Scanning document...' : 'Analyzing object...'}
-            </Typography>
-            <LinearProgress 
-              variant="determinate" 
-              value={scanningStatus.progress}
-              sx={{ width: '100%', mt: 2 }}
-            />
-          </Paper>
-        )}
-
-        {/* Preview Dialog */}
-        <Dialog 
-          open={showPreview} 
-          onClose={() => setShowPreview(false)} 
-          maxWidth="md" 
-          fullWidth
-        >
-          <DialogContent>
-            {scannedContent && (
-              <Box sx={{ p: 2 }}>
-                <Typography variant="h6" gutterBottom sx={{
-                  color: '#00ff9d',
-                  fontWeight: 600,
-                  background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}>
-                  Extracted Key Points
-                </Typography>
-                <List>
-                  {extractedPoints.map((point, index) => (
-                    <ListItem key={index}>
-                      <ListItemIcon>
-                        <KeyboardArrowRight sx={{ color: '#00ff9d' }} />
-                      </ListItemIcon>
-                      <ListItemText 
-                        primary={point}
-                        sx={{
-                          '& .MuiListItemText-primary': {
-                            color: 'white'
-                          }
+              {/* Image Preview Dialog */}
+              <Dialog 
+                open={showImagePreview} 
+                onClose={() => setShowImagePreview(false)}
+                maxWidth="md"
+                fullWidth
+              >
+                <DialogContent>
+                  <Box sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="h6" gutterBottom>
+                      Preview Captured Image
+                    </Typography>
+                    <Box sx={{ mb: 3 }}>
+                      <img
+                        src={capturedImage}
+                        alt="Captured object"
+                        style={{
+                          maxWidth: '100%',
+                          maxHeight: '400px',
+                          borderRadius: '8px',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
                         }}
                       />
-                    </ListItem>
-                  ))}
-                </List>
-                <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                      <Button
+                        variant="outlined"
+                        color="secondary"
+                        onClick={handleRetake}
+                        startIcon={<CameraAlt />}
+                      >
+                        Retake
+                      </Button>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleProceed}
+                        startIcon={<Check />}
+                      >
+                        Proceed
+                      </Button>
+                    </Box>
+                  </Box>
+                </DialogContent>
+              </Dialog>
+
+              {/* Study Materials */}
+              <Grid container spacing={3}>
+                {studyMaterials.map((material, index) => (
+                  <Grid item xs={12} md={4} key={index}>
+                    <Card 
+                      elevation={3}
+                      sx={{ 
+                        height: '100%',
+                        transition: 'transform 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)'
+                        }
+                      }}
+                    >
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          {material.title}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          {material.category}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Scanned on: {new Date(material.scanDate).toLocaleDateString()}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+
+              {/* Digital Binder */}
+              <Box className={styles.binderSection}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Digital Binder
+                  </Typography>
                   <Button
                     variant="contained"
-                    startIcon={<DownloadIcon />}
-                    onClick={handleDownloadPDF}
+                    startIcon={<AddIcon />}
+                    onClick={() => setShowFolderDialog(true)}
                     sx={{
                       background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
                       color: 'black',
@@ -1051,126 +1617,211 @@ const SmartScan = () => {
                       },
                     }}
                   >
-                    Download PDF
-                  </Button>
-                  <Button
-                    variant="contained"
-                    startIcon={<ShareIcon />}
-                    onClick={handleShare}
-                    sx={{
-                      background: 'rgba(0, 255, 157, 0.2)',
-                      color: '#00ff9d',
-                      '&:hover': {
-                        background: 'rgba(0, 255, 157, 0.3)',
-                      },
-                    }}
-                  >
-                    Share with Study Group
+                    New Folder
                   </Button>
                 </Box>
-              </Box>
-            )}
-          </DialogContent>
-        </Dialog>
+                
+                <Droppable droppableId="binder">
+                  {(provided) => (
+                    <Box
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={styles.binderContent}
+                    >
+                      {digitalBinder.collections.map((collection, index) => (
+                        <Draggable
+                          key={collection.id}
+                          draggableId={collection.id}
+                          index={index}
+                        >
+                          {(provided) => (
+                            <Card
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              {...provided.dragHandleProps}
+                              className={styles.collectionCard}
+                              onClick={() => setSelectedFolder(collection)}
+                            >
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                                <Typography variant="h6" sx={{ color: '#00ff9d' }}>
+                                  {collection.name}
+                                </Typography>
+                                <IconButton size="small" sx={{ color: '#00ff9d' }}>
+                                  <MoreIcon />
+                                </IconButton>
+                              </Box>
 
-        {/* Image Preview Dialog */}
+                              <Droppable droppableId={collection.id.toString()}>
+                                {(provided) => (
+                                  <Box
+                                    ref={provided.innerRef}
+                                    {...provided.droppableProps}
+                                    className={styles.folderContent}
+                                  >
+                                    {collection.items.map((item, index) => (
+                                      <Draggable key={item.id} draggableId={item.id.toString()} index={index}>
+                                        {(provided, snapshot) => (
+                                          <Box
+                                            ref={provided.innerRef}
+                                            {...provided.draggableProps}
+                                            {...provided.dragHandleProps}
+                                            className={styles.fileItem}
+                                            onClick={() => handleFileView(item)}
+                                          >
+                                            {item.type === 'text' ? (
+                                              <Box className={styles.textPreview}>
+                                                {item.text}
+                                              </Box>
+                                            ) : (
+                                              <img
+                                                src={item.image}
+                                                alt=""
+                                                className={styles.filePreview}
+                                              />
+                                            )}
+                                          </Box>
+                                        )}
+                                      </Draggable>
+                                    ))}
+                                    {provided.placeholder}
+                                  </Box>
+                                )}
+                              </Droppable>
+
+                              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
+                                <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                  {collection.items.length} items
+                                </Typography>
+                                <Button
+                                  size="small"
+                                  startIcon={<GalleryIcon />}
+                                  sx={{ color: '#00ff9d' }}
+                                  onClick={() => setSelectedFolder(collection)}
+                                >
+                                  View All
+                                </Button>
+                              </Box>
+                            </Card>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </Box>
+                  )}
+                </Droppable>
+              </Box>
+            </Paper>
+          </Grid>
+          
+          {/* Study Group Dialog */}
+          <Grid item xs={12} md={4}>
+            <Paper className={styles.studyGroupSection}>
+              <Typography variant="h6" gutterBottom sx={{ color: '#00ff9d' }}>
+                HEALLY Integration
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
+                Send your scanned content to HEALLY for enhanced learning and collaboration
+              </Typography>
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setShowHeallyDialog(true);
+                  fetchHeallyProjects();
+                }}
+                startIcon={<ShareIcon />}
+                sx={{ 
+                  width: '100%',
+                  background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
+                  color: 'black',
+                  '&:hover': {
+                    background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
+                  },
+                }}
+              >
+                Send to HEALLY
+              </Button>
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* AI Assistant Dialog */}
         <Dialog 
-          open={showImagePreview} 
-          onClose={() => setShowImagePreview(false)}
+          open={showAIAssistant} 
+          onClose={() => setShowAIAssistant(false)}
           maxWidth="md"
           fullWidth
         >
+          <DialogTitle>
+            <Box display="flex" alignItems="center">
+              <SmartToyIcon sx={{ mr: 1, color: '#00ff88' }} />
+              AI Study Assistant
+            </Box>
+          </DialogTitle>
           <DialogContent>
-            <Box sx={{ p: 2, textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>
-                Preview Captured Image
-              </Typography>
-              <Box sx={{ mb: 3 }}>
-                <img
-                  src={capturedImage}
-                  alt="Captured object"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '400px',
-                    borderRadius: '8px',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            <Box sx={{ height: 400, overflowY: 'auto', mb: 2 }}>
+              {aiChat.map((message, index) => (
+                <Box
+                  key={index}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start',
+                    mb: 2
                   }}
-                />
-              </Box>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
-                <Button
-                  variant="outlined"
-                  color="secondary"
-                  onClick={handleRetake}
-                  startIcon={<CameraAlt />}
                 >
-                  Retake
-                </Button>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleProceed}
-                  startIcon={<Check />}
-                >
-                  Proceed
-                </Button>
-              </Box>
+                  <Box
+                    sx={{
+                      maxWidth: '70%',
+                      p: 2,
+                      borderRadius: 2,
+                      bgcolor: message.type === 'user' ? 'primary.main' : 'background.paper',
+                      color: message.type === 'user' ? 'white' : 'text.primary',
+                      boxShadow: 1
+                    }}
+                  >
+                    <Typography variant="body1">{message.content}</Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                      {new Date(message.timestamp).toLocaleTimeString()}
+                    </Typography>
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+            <Box display="flex" gap={1}>
+              <TextField
+                fullWidth
+                value={userInput}
+                onChange={(e) => setUserInput(e.target.value)}
+                placeholder="Ask me anything about your study materials..."
+                onKeyPress={(e) => e.key === 'Enter' && handleAIAssistantChat()}
+              />
+              <Button
+                variant="contained"
+                onClick={handleAIAssistantChat}
+                sx={{ bgcolor: '#00ff88', '&:hover': { bgcolor: '#00cc6a' } }}
+              >
+                Send
+              </Button>
             </Box>
           </DialogContent>
         </Dialog>
 
-        {/* Study Materials */}
-        <Grid container spacing={3}>
-          {studyMaterials.map((material, index) => (
-            <Grid item xs={12} md={4} key={index}>
-              <Card 
-                elevation={3}
-                sx={{ 
-                  height: '100%',
-                  transition: 'transform 0.2s',
-                  '&:hover': {
-                    transform: 'translateY(-4px)'
-                  }
-                }}
-              >
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    {material.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    {material.category}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Scanned on: {new Date(material.scanDate).toLocaleDateString()}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-
-        {/* Digital Binder */}
-        <Button
-          variant="contained"
-          startIcon={<FolderIcon />}
-          onClick={() => setShowBinder(!showBinder)}
-          sx={{
-            mt: 4,
-            background: 'linear-gradient(45deg, #00ff9d, #00ffcc)',
-            color: 'black',
-            '&:hover': {
-              background: 'linear-gradient(45deg, #00ffcc, #00ff9d)',
-            }
-          }}
-        >
-          {showBinder ? 'Hide Digital Binder' : 'Show Digital Binder'}
-        </Button>
-
-        {showBinder && <DigitalBinder />}
-
-        {/* Hidden Elements */}
-        <video ref={videoRef} style={{ display: 'none' }} />
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        {/* Add AI Assistant button to the toolbar */}
+        <Box sx={{ position: 'fixed', bottom: 20, right: 20 }}>
+          <Button
+            variant="contained"
+            onClick={() => setShowAIAssistant(true)}
+            sx={{
+              bgcolor: '#00ff88',
+              '&:hover': { bgcolor: '#00cc6a' },
+              borderRadius: '50%',
+              width: 56,
+              height: 56,
+              minWidth: 0
+            }}
+          >
+            <SmartToyIcon />
+          </Button>
+        </Box>
 
         {/* Notifications */}
         <Snackbar
@@ -1234,8 +1885,109 @@ const SmartScan = () => {
         <AnimatePresence>
           {result && renderScanResult()}
         </AnimatePresence>
+
+        {/* Replace Study Group Dialog with HEALLY Dialog */}
+        <Dialog 
+          open={showHeallyDialog} 
+          onClose={() => setShowHeallyDialog(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box display="flex" alignItems="center">
+              <ShareIcon sx={{ mr: 1, color: '#00ff9d' }} />
+              Send to HEALLY
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Select a HEALLY Project
+              </Typography>
+              <List>
+                {heallyProjects.map((project) => (
+                  <ListItem
+                    key={project.id}
+                    button
+                    onClick={() => sendToHeally(project.id)}
+                    sx={{
+                      mb: 1,
+                      borderRadius: 1,
+                      '&:hover': {
+                        background: 'rgba(0, 255, 157, 0.1)',
+                      },
+                    }}
+                  >
+                    <ListItemIcon>
+                      <FolderIcon sx={{ color: '#00ff9d' }} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={project.name}
+                      secondary={`Last updated: ${new Date(project.updatedAt).toLocaleDateString()}`}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            </Box>
+          </DialogContent>
+        </Dialog>
+
+        {/* Add Folder Dialog */}
+        <Dialog open={showFolderDialog} onClose={() => setShowFolderDialog(false)}>
+          <DialogTitle>Create New Folder</DialogTitle>
+          <DialogContent>
+            <TextField
+              autoFocus
+              margin="dense"
+              label="Folder Name"
+              fullWidth
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setShowFolderDialog(false)}>Cancel</Button>
+            <Button onClick={createFolder} color="primary">Create</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Add File Viewer Dialog */}
+        <Dialog
+          open={showFileViewer}
+          onClose={() => setShowFileViewer(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle>
+            <Box display="flex" alignItems="center" justifyContent="space-between">
+              <Typography variant="h6">File Preview</Typography>
+              <IconButton onClick={() => setShowFileViewer(false)}>
+                <CloseIcon />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            {selectedFile && (
+              <Box sx={{ mt: 2 }}>
+                {selectedFile.type === 'text' ? (
+                  <Paper sx={{ p: 2, maxHeight: '60vh', overflow: 'auto' }}>
+                    <Typography>{selectedFile.text}</Typography>
+                  </Paper>
+                ) : (
+                  <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                    <img
+                      src={selectedFile.image}
+                      alt=""
+                      style={{ maxWidth: '100%', maxHeight: '60vh', objectFit: 'contain' }}
+                    />
+                  </Box>
+                )}
+              </Box>
+            )}
+          </DialogContent>
+        </Dialog>
       </Container>
-    </Box>
+    </DragDropContext>
   );
 };
 

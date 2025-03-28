@@ -78,6 +78,23 @@ const StudyMaterial = mongoose.model('StudyMaterial', {
   metadata: Object
 });
 
+// Add folder schema
+const folderSchema = new mongoose.Schema({
+  name: String,
+  description: String,
+  items: [{
+    id: String,
+    type: String,
+    text: String,
+    image: String,
+    createdAt: Date
+  }],
+  createdAt: Date,
+  updatedAt: Date
+});
+
+const Folder = mongoose.model('Folder', folderSchema);
+
 /**
  * API Routes
  */
@@ -228,6 +245,135 @@ app.post('/api/collab/share', (req, res) => {
   } catch (err) {
     console.error('Error sharing content:', err);
     res.status(500).json({ error: 'Failed to share content' });
+  }
+});
+
+// HEALLY Integration Routes
+app.get('/api/heally/projects', async (req, res) => {
+  try {
+    // TODO: Replace with actual HEALLY API integration
+    // For now, return mock data
+    const mockProjects = [
+      {
+        id: 1,
+        name: 'Biology Study Group',
+        updatedAt: new Date().toISOString(),
+        description: 'Advanced biology concepts and research'
+      },
+      {
+        id: 2,
+        name: 'Chemistry Lab Notes',
+        updatedAt: new Date().toISOString(),
+        description: 'Lab experiments and observations'
+      },
+      {
+        id: 3,
+        name: 'Physics Problem Sets',
+        updatedAt: new Date().toISOString(),
+        description: 'Problem-solving exercises and solutions'
+      }
+    ];
+    res.json(mockProjects);
+  } catch (error) {
+    console.error('Error fetching HEALLY projects:', error);
+    res.status(500).json({ error: 'Failed to fetch HEALLY projects' });
+  }
+});
+
+app.post('/api/heally/share', async (req, res) => {
+  try {
+    const { projectId, content, analysis } = req.body;
+    
+    // TODO: Replace with actual HEALLY API integration
+    // For now, just log the data
+    console.log('Sharing content with HEALLY:', {
+      projectId,
+      contentLength: content.length,
+      analysis
+    });
+
+    // Mock successful response
+    res.json({
+      success: true,
+      message: 'Content shared successfully with HEALLY',
+      projectId
+    });
+  } catch (error) {
+    console.error('Error sharing with HEALLY:', error);
+    res.status(500).json({ error: 'Failed to share content with HEALLY' });
+  }
+});
+
+// Add folder routes
+app.post('/api/folders', async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const folder = new Folder({
+      name,
+      description,
+      items: [],
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+    await folder.save();
+    res.json(folder);
+  } catch (error) {
+    console.error('Error creating folder:', error);
+    res.status(500).json({ error: 'Failed to create folder' });
+  }
+});
+
+app.get('/api/folders', async (req, res) => {
+  try {
+    const folders = await Folder.find().sort({ updatedAt: -1 });
+    res.json(folders);
+  } catch (error) {
+    console.error('Error fetching folders:', error);
+    res.status(500).json({ error: 'Failed to fetch folders' });
+  }
+});
+
+app.get('/api/folders/:id', async (req, res) => {
+  try {
+    const folder = await Folder.findById(req.params.id);
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+    res.json(folder);
+  } catch (error) {
+    console.error('Error fetching folder:', error);
+    res.status(500).json({ error: 'Failed to fetch folder' });
+  }
+});
+
+app.put('/api/folders/:id', async (req, res) => {
+  try {
+    const { name, description } = req.body;
+    const folder = await Folder.findByIdAndUpdate(
+      req.params.id,
+      { name, description, updatedAt: new Date() },
+      { new: true }
+    );
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+    res.json(folder);
+  } catch (error) {
+    console.error('Error updating folder:', error);
+    res.status(500).json({ error: 'Failed to update folder' });
+  }
+});
+
+app.delete('/api/folders/:id', async (req, res) => {
+  try {
+    const folder = await Folder.findByIdAndDelete(req.params.id);
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+    res.json({ message: 'Folder deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting folder:', error);
+    res.status(500).json({ error: 'Failed to delete folder' });
   }
 });
 
