@@ -1,52 +1,65 @@
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
+const helmet = require('helmet');
+const compression = require('compression');
+const { RateLimiterMemory } = require('rate-limiter-flexible');
 const logger = require('./utils/logger');
+const { sequelize } = require('./models');
+const authRoutes = require('./routes/authRoutes');
+const photoRoutes = require('./routes/photoRoutes');
+const imageRoutes = require('./routes/imageRoutes');
+const smartScanRoutes = require('./routes/smartScan.routes');
+const studyRoutes = require('./routes/study.routes');
+const studyPathRoutes = require('./routes/studyPath.routes');
+const scanRoutes = require('./routes/scan.routes');
 
 const app = express();
 
-// Middleware
+// Configure server for larger request headers
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Security middleware
+app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(compression());
+
+// Rate limiting
+const rateLimiter = new RateLimiterMemory({
+  points: 10, // Number of points
+  duration: 1 // Per second
+});
+
+app.use(async (req, res, next) => {
+  try {
+    await rateLimiter.consume(req.ip);
+    next();
+  } catch (error) {
+    res.status(429).json({
+      status: 'error',
+      message: 'Too many requests, please try again later.'
+    });
+  }
+});
+
+// Basic middleware
 app.use(morgan('dev'));
 
-// Database connection
-mongoose.connect('mongodb://127.0.0.1:27017/heallyhub', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000,
-  retryWrites: true,
-  retryReads: true
-})
-.then(() => {
-  logger.info('Connected to MongoDB');
-})
-.catch(err => {
-  logger.error('MongoDB connection error:', err);
-  // Don't exit process, just log the error
-  logger.error('Failed to connect to MongoDB. Server will continue running without database functionality.');
-});
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/photos', photoRoutes);
+app.use('/api/images', imageRoutes);
+app.use('/api/smartscan', smartScanRoutes);
+app.use('/api/studies', studyRoutes);
+app.use('/api/study-paths', studyPathRoutes);
+app.use('/api/scans', scanRoutes);
 
 // Serve static files from the frontend build directory
 const frontendPath = path.join(__dirname, '../../../frontend/build');
 app.use(express.static(frontendPath));
-
-// API routes
-const apiRouter = express.Router();
-
-apiRouter.get('/test', (req, res) => {
-  res.json({ 
-    status: 'success',
-    message: 'API is working!',
-    time: new Date().toISOString()
-  });
-});
-
-// Mount API routes under /api
-app.use('/api', apiRouter);
 
 // Serve uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -56,16 +69,76 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-// Error handling
+// Error handling middleware
 app.use((err, req, res, next) => {
   logger.error('Error:', err);
-  res.status(500).json({ message: 'Internal Server Error' });
+
+  // Handle multer errors
+  if (err.name === 'MulterError') {
+    return res.status(400).json({
+      status: 'error',
+      message: err.message
+    });
+  }
+
+  // Handle Sequelize validation errors
+  if (err.name === 'SequelizeValidationError') {
+    return res.status(400).json({
+      status: 'error',
+      message: err.errors.map(e => e.message)
+    });
+  }
+
+  // Handle Sequelize unique constraint errors
+  if (err.name === 'SequelizeUniqueConstraintError') {
+    return res.status(400).json({
+      status: 'error',
+      message: 'A record with this value already exists'
+    });
+  }
+
+  // Default error
+  res.status(500).json({
+    status: 'error',
+    message: 'Internal Server Error'
+  });
 });
 
-// Start server
-const PORT = 3000;
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-});
+// Initialize database
+const initDatabase = async () => {
+  try {
+    // Test the connection
+    await sequelize.authenticate();
+    logger.info('Database connection has been established successfully.');
+
+    // Sync all models
+    await sequelize.sync({ alter: true });
+    logger.info('Database models have been synchronized.');
+
+    // Create a test user if none exists
+    const { User } = require('./models');
+    const userCount = await User.count();
+    
+    if (userCount === 0) {
+      await User.create({
+        name: 'Test User',
+        email: 'test@example.com',
+        password: 'password123'
+      });
+      logger.info('Test user has been created.');
+    }
+
+    // Start server after database is initialized
+    const PORT = process.env.PORT || 3002;
+    app.listen(PORT, () => {
+      logger.info(`Server is running on port ${PORT}`);
+    });
+  } catch (error) {
+    logger.error('Unable to connect to the database:', error);
+    process.exit(1);
+  }
+};
+
+initDatabase();
 
 module.exports = app; 

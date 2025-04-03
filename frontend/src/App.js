@@ -1,71 +1,45 @@
-import React, { useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
-import CameraInterface from './components/CameraInterface';
-import AnalysisInterface from './components/AnalysisInterface';
-import DigitalBinder from './components/DigitalBinder';
-import './App.css';
+import React from 'react';
+import { ThemeProvider } from '@mui/material/styles';
+import CssBaseline from '@mui/material/CssBaseline';
+import { Box } from '@mui/material';
+import theme from './theme';
+import { AuthProvider } from './contexts/AuthContext';
+import { BrowserRouter as Router } from 'react-router-dom';
+import Navbar from './components/Navbar';
+import AppRoutes from './routes';
 
-function App() {
-  const navigate = useNavigate();
-  const [capturedImage, setCapturedImage] = useState(null);
-  const [documents, setDocuments] = useState([]);
-
-  const handleCapture = (image) => {
-    setCapturedImage(image);
-    navigate('/analysis');
-  };
-
-  const handleClose = () => {
-    navigate('/');
-  };
-
-  const handleSaveDocument = (document) => {
-    setDocuments(prev => [...prev, {
-      id: Date.now(),
-      title: document.title || 'Untitled Document',
-      subject: document.subject || 'Uncategorized',
-      date: new Date().toISOString(),
-      thumbnail: document.image,
-      content: document.content
-    }]);
-    navigate('/library');
-  };
-
+const App = () => {
   return (
-    <div className="App">
-      <Routes>
-        <Route path="/" element={
-          <div className="smartscan-banner">
-            <h1>SmartScan</h1>
-            <p>Scan, analyze, and organize your study materials with AI</p>
-            <div className="banner-buttons">
-              <button onClick={() => navigate('/scan')} className="primary-btn">Start Scanning</button>
-              <button onClick={() => navigate('/library')} className="secondary-btn">View Library</button>
-            </div>
-          </div>
-        } />
-        <Route path="/scan" element={
-          <CameraInterface 
-            onCapture={handleCapture}
-            onClose={handleClose}
-          />
-        } />
-        <Route path="/analysis" element={
-          <AnalysisInterface 
-            image={capturedImage}
-            onClose={() => navigate('/')}
-            onSave={handleSaveDocument}
-          />
-        } />
-        <Route path="/library" element={
-          <DigitalBinder 
-            documents={documents}
-            onClose={() => navigate('/')}
-          />
-        } />
-      </Routes>
-    </div>
+    <AuthProvider>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Router>
+          <Box
+            sx={{
+              minHeight: '100vh',
+              background: 'linear-gradient(135deg, #1a237e 0%, #0d47a1 100%)',
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            <Navbar />
+            <Box
+              component="main"
+              sx={{
+                flexGrow: 1,
+                p: 3,
+                mt: 8,
+                position: 'relative',
+                zIndex: 1,
+              }}
+            >
+              <AppRoutes />
+            </Box>
+          </Box>
+        </Router>
+      </ThemeProvider>
+    </AuthProvider>
   );
-}
+};
 
 export default App;
