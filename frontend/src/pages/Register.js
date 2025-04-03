@@ -6,41 +6,33 @@ import {
   TextField,
   Button,
   Paper,
-  Alert,
-  Snackbar,
-  Link,
   Container,
-  Fade,
-  IconButton,
-  InputAdornment,
+  Link,
+  Alert,
+  CircularProgress,
 } from '@mui/material';
-import {
-  Person as PersonIcon,
-  Lock as LockIcon,
-  Email as EmailIcon,
-  Visibility,
-  VisibilityOff,
-} from '@mui/icons-material';
-import OceanBackground from '../components/OceanBackground';
+import { PersonAdd as RegisterIcon } from '@mui/icons-material';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { auth } from '../firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { useAuth } from '../contexts/AuthContext';
 
 const Register = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [formData, setFormData] = useState({
+    name: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [fadeIn, setFadeIn] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   React.useEffect(() => {
-    setFadeIn(true);
-  }, []);
+    if (currentUser) {
+      navigate('/scan');
+    }
+  }, [currentUser, navigate]);
 
   const handleChange = (e) => {
     setFormData({
@@ -61,19 +53,23 @@ const Register = () => {
     }
 
     try {
-      console.log('Attempting registration with:', { email: formData.email });
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         formData.email,
         formData.password
       );
-      console.log('Registration successful:', userCredential.user);
+
+      await updateProfile(userCredential.user, {
+        displayName: formData.name,
+      });
+
       navigate('/scan');
     } catch (error) {
       console.error('Registration error:', error);
       setError(
-        error.message || 
-        'Registration failed. Please try again.'
+        error.code === 'auth/email-already-in-use'
+          ? 'Email already in use. Please try a different email.'
+          : 'Failed to create account. Please try again.'
       );
     } finally {
       setLoading(false);
@@ -81,220 +77,110 @@ const Register = () => {
   };
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <OceanBackground />
-      
-      <Container maxWidth="sm">
-        <Fade in={fadeIn} timeout={1000}>
-          <Paper
-            elevation={24}
-            sx={{
-              p: 4,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              background: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(10px)',
-              borderRadius: '20px',
-              boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.37)',
-              border: '1px solid rgba(255, 255, 255, 0.18)',
-              transform: 'translateY(0)',
-              transition: 'transform 0.3s ease-in-out',
-              '&:hover': {
-                transform: 'translateY(-5px)',
-              },
-            }}
-          >
-            <Typography
-              variant="h4"
-              gutterBottom
-              sx={{
-                mb: 3,
-                fontWeight: 'bold',
-                background: 'linear-gradient(45deg, #1a237e, #0d47a1)',
-                backgroundClip: 'text',
-                textFillColor: 'transparent',
-                textAlign: 'center',
-              }}
-            >
-              Join SmartScan
-            </Typography>
-            <Typography
-              variant="body1"
-              color="text.secondary"
-              sx={{ mb: 4, textAlign: 'center' }}
-            >
-              Start your journey into intelligent learning
-            </Typography>
+    <Container maxWidth="sm">
+      <Box
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 2,
+        }}
+      >
+        <Paper
+          elevation={3}
+          sx={{
+            p: 4,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+            background: 'rgba(255, 255, 255, 0.9)',
+            backdropFilter: 'blur(10px)',
+            borderRadius: '20px',
+          }}
+        >
+          <Typography variant="h4" component="h1" gutterBottom>
+            Create Account
+          </Typography>
+          
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Join SmartScan to start your learning journey
+          </Typography>
 
-            <form onSubmit={handleSubmit} style={{ width: '100%' }}>
-              <TextField
-                fullWidth
-                label="Email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                margin="normal"
-                required
-                autoComplete="email"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <EmailIcon sx={{ color: '#1a237e' }} />
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '&:hover fieldset': {
-                      borderColor: '#1a237e',
-                    },
-                  },
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Password"
-                name="password"
-                type={showPassword ? 'text' : 'password'}
-                value={formData.password}
-                onChange={handleChange}
-                margin="normal"
-                required
-                autoComplete="new-password"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LockIcon sx={{ color: '#1a237e' }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                      >
-                        {showPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '&:hover fieldset': {
-                      borderColor: '#1a237e',
-                    },
-                  },
-                }}
-              />
-              <TextField
-                fullWidth
-                label="Confirm Password"
-                name="confirmPassword"
-                type={showConfirmPassword ? 'text' : 'password'}
-                value={formData.confirmPassword}
-                onChange={handleChange}
-                margin="normal"
-                required
-                autoComplete="new-password"
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <LockIcon sx={{ color: '#1a237e' }} />
-                    </InputAdornment>
-                  ),
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        edge="end"
-                      >
-                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '&:hover fieldset': {
-                      borderColor: '#1a237e',
-                    },
-                  },
-                }}
-              />
-              <Button
-                fullWidth
-                variant="contained"
-                type="submit"
-                startIcon={<PersonIcon />}
-                disabled={loading}
-                sx={{
-                  mt: 3,
-                  background: 'linear-gradient(45deg, #1a237e, #0d47a1)',
-                  '&:hover': {
-                    background: 'linear-gradient(45deg, #0d47a1, #1a237e)',
-                  },
-                  transition: 'all 0.3s ease-in-out',
-                  transform: 'scale(1)',
-                  '&:hover': {
-                    transform: 'scale(1.02)',
-                  },
-                }}
-              >
-                {loading ? 'Creating Account...' : 'Create Account'}
-              </Button>
-            </form>
+          {error && (
+            <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+              {error}
+            </Alert>
+          )}
 
-            <Box sx={{ mt: 3, textAlign: 'center', width: '100%' }}>
-              <Typography variant="body2" color="text.secondary">
-                Already have an account?{' '}
-                <Link
-                  component={RouterLink}
-                  to="/login"
-                  underline="hover"
-                  sx={{
-                    color: '#1a237e',
-                    '&:hover': {
-                      color: '#0d47a1',
-                    },
-                  }}
-                >
-                  Sign in
-                </Link>
-              </Typography>
-            </Box>
-
-            <Snackbar
-              open={!!error}
-              autoHideDuration={6000}
-              onClose={() => setError('')}
-              anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          <form onSubmit={handleSubmit} style={{ width: '100%' }}>
+            <TextField
+              fullWidth
+              label="Full Name"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              margin="normal"
+              required
+              disabled={loading}
+            />
+            <TextField
+              fullWidth
+              label="Email"
+              name="email"
+              type="email"
+              value={formData.email}
+              onChange={handleChange}
+              margin="normal"
+              required
+              disabled={loading}
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              name="password"
+              type="password"
+              value={formData.password}
+              onChange={handleChange}
+              margin="normal"
+              required
+              disabled={loading}
+            />
+            <TextField
+              fullWidth
+              label="Confirm Password"
+              name="confirmPassword"
+              type="password"
+              value={formData.confirmPassword}
+              onChange={handleChange}
+              margin="normal"
+              required
+              disabled={loading}
+            />
+            <Button
+              fullWidth
+              variant="contained"
+              type="submit"
+              disabled={loading}
+              startIcon={loading ? <CircularProgress size={20} /> : <RegisterIcon />}
+              sx={{ mt: 3 }}
             >
-              <Alert
-                onClose={() => setError('')}
-                severity="error"
-                sx={{
-                  background: 'rgba(255, 255, 255, 0.9)',
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                {error}
-              </Alert>
-            </Snackbar>
-          </Paper>
-        </Fade>
-      </Container>
-    </Box>
+              {loading ? 'Creating Account...' : 'Create Account'}
+            </Button>
+          </form>
+
+          <Typography variant="body2" sx={{ mt: 2 }}>
+            Already have an account?{' '}
+            <Link component={RouterLink} to="/login">
+              Sign in here
+            </Link>
+          </Typography>
+        </Paper>
+      </Box>
+    </Container>
   );
 };
 

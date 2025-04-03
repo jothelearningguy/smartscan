@@ -1,6 +1,6 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { auth } from '../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { signInWithEmailAndPassword, onAuthStateChanged } from 'firebase/auth';
 
 const AuthContext = createContext();
 
@@ -13,11 +13,30 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Set up auth state listener
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
+      if (user) {
+        setCurrentUser(user);
+      } else {
+        // Auto sign in with default credentials if no user
+        const autoSignIn = async () => {
+          try {
+            const userCredential = await signInWithEmailAndPassword(
+              auth,
+              'demo@smartscan.com',
+              'demo123'
+            );
+            setCurrentUser(userCredential.user);
+          } catch (error) {
+            console.error('Auto sign in error:', error);
+          }
+        };
+        autoSignIn();
+      }
       setLoading(false);
     });
 
+    // Cleanup subscription
     return unsubscribe;
   }, []);
 

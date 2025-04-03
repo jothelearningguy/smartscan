@@ -3,19 +3,17 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { CircularProgress, Box } from '@mui/material';
 import LoadingAnimation from './components/LoadingAnimation';
 import AnimatedCard from './components/AnimatedCard';
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
 import { useAuth } from './contexts/AuthContext';
 
 // Lazy load all pages
-const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Learn = lazy(() => import('./pages/Learn'));
 const Scan = lazy(() => import('./pages/Scan'));
 const Collections = lazy(() => import('./pages/Collections'));
 const Progress = lazy(() => import('./pages/Progress'));
 const Profile = lazy(() => import('./pages/Profile'));
 const PhotoUpload = lazy(() => import('./components/PhotoUpload'));
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
 
 // Higher-order component for loading state
 const withLoading = (Component) => (props) => (
@@ -25,15 +23,6 @@ const withLoading = (Component) => (props) => (
     </AnimatedCard>
   </Suspense>
 );
-
-// Protected Route wrapper
-const ProtectedRoute = ({ children }) => {
-  const { currentUser } = useAuth();
-  if (!currentUser) {
-    return <Navigate to="/login" replace />;
-  }
-  return children;
-};
 
 // Loading component
 const LoadingScreen = () => (
@@ -49,29 +38,41 @@ const LoadingScreen = () => (
   </Box>
 );
 
+// Protected Route component
+const ProtectedRoute = ({ children }) => {
+  const { currentUser, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
+  if (!currentUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+};
+
 const AppRoutes = () => {
+  const { loading } = useAuth();
+
+  if (loading) {
+    return <LoadingScreen />;
+  }
+
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
         {/* Public routes */}
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-
+        <Route path="/login" element={withLoading(Login)()} />
+        <Route path="/register" element={withLoading(Register)()} />
+        
         {/* Protected routes */}
         <Route
           path="/"
           element={
             <ProtectedRoute>
-              <Navigate to="/dashboard" replace />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
+              <Navigate to="/scan" replace />
             </ProtectedRoute>
           }
         />
@@ -79,7 +80,7 @@ const AppRoutes = () => {
           path="/scan"
           element={
             <ProtectedRoute>
-              <Scan />
+              {withLoading(Scan)()}
             </ProtectedRoute>
           }
         />
@@ -87,7 +88,7 @@ const AppRoutes = () => {
           path="/learn"
           element={
             <ProtectedRoute>
-              <Learn />
+              {withLoading(Learn)()}
             </ProtectedRoute>
           }
         />
@@ -95,13 +96,35 @@ const AppRoutes = () => {
           path="/profile"
           element={
             <ProtectedRoute>
-              <Profile />
+              {withLoading(Profile)()}
             </ProtectedRoute>
           }
         />
-        <Route path="/collections" element={withLoading(Collections)()} />
-        <Route path="/progress" element={withLoading(Progress)()} />
-        <Route path="/upload" element={withLoading(PhotoUpload)()} />
+        <Route
+          path="/collections"
+          element={
+            <ProtectedRoute>
+              {withLoading(Collections)()}
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/progress"
+          element={
+            <ProtectedRoute>
+              {withLoading(Progress)()}
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/upload"
+          element={
+            <ProtectedRoute>
+              {withLoading(PhotoUpload)()}
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/scan" replace />} />
       </Routes>
     </Suspense>
   );

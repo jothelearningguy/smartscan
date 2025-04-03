@@ -10,10 +10,10 @@ import AppRoutes from './routes';
 
 const App = () => {
   return (
-    <AuthProvider>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <Router>
+    <Router>
+      <AuthProvider>
+        <ThemeProvider theme={theme}>
+          <CssBaseline />
           <Box
             sx={{
               minHeight: '100vh',
@@ -36,9 +36,9 @@ const App = () => {
               <AppRoutes />
             </Box>
           </Box>
-        </Router>
-      </ThemeProvider>
-    </AuthProvider>
+        </ThemeProvider>
+      </AuthProvider>
+    </Router>
   );
 };
 

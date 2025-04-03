@@ -18,15 +18,20 @@ import {
   School as SchoolIcon,
   Person as PersonIcon,
   Logout as LogoutIcon,
+  Collections as CollectionsIcon,
+  Timeline as ProgressIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
+import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../firebase';
+import { signOut } from 'firebase/auth';
 
 const Navbar = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [anchorEl, setAnchorEl] = useState(null);
-  const isAuthenticated = !!localStorage.getItem('token');
+  const { currentUser } = useAuth();
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -36,9 +41,13 @@ const Navbar = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      navigate('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
   };
 
   const handleNavigation = (path) => {
@@ -47,9 +56,10 @@ const Navbar = () => {
   };
 
   const menuItems = [
-    { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { text: 'Scan', icon: <CameraIcon />, path: '/scan' },
     { text: 'Learn', icon: <SchoolIcon />, path: '/learn' },
+    { text: 'Collections', icon: <CollectionsIcon />, path: '/collections' },
+    { text: 'Progress', icon: <ProgressIcon />, path: '/progress' },
     { text: 'Profile', icon: <PersonIcon />, path: '/profile' },
   ];
 
@@ -60,6 +70,7 @@ const Navbar = () => {
           color="inherit"
           edge="start"
           sx={{ mr: 2, display: { sm: 'none' } }}
+          onClick={handleMenu}
         >
           <MenuIcon />
         </IconButton>
@@ -72,7 +83,7 @@ const Navbar = () => {
           SmartScan
         </Typography>
 
-        {isAuthenticated ? (
+        {currentUser ? (
           <>
             <Box sx={{ display: { xs: 'none', sm: 'flex' }, gap: 2 }}>
               {menuItems.map((item) => (
@@ -111,6 +122,7 @@ const Navbar = () => {
             >
               <Avatar sx={{ width: 32, height: 32 }} />
             </IconButton>
+
             <Menu
               anchorEl={anchorEl}
               open={Boolean(anchorEl)}
