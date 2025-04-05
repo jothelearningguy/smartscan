@@ -12,27 +12,16 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { PersonAdd as RegisterIcon } from '@mui/icons-material';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { auth } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
 
 const Register = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const [formData, setFormData] = useState({
-    name: '',
     email: '',
     password: '',
     confirmPassword: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  React.useEffect(() => {
-    if (currentUser) {
-      navigate('/scan');
-    }
-  }, [currentUser, navigate]);
 
   const handleChange = (e) => {
     setFormData({
@@ -53,24 +42,12 @@ const Register = () => {
     }
 
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        formData.email,
-        formData.password
-      );
-
-      await updateProfile(userCredential.user, {
-        displayName: formData.name,
-      });
-
+      // Simulated registration - replace with your actual registration logic
+      await new Promise(resolve => setTimeout(resolve, 1000));
       navigate('/scan');
     } catch (error) {
       console.error('Registration error:', error);
-      setError(
-        error.code === 'auth/email-already-in-use'
-          ? 'Email already in use. Please try a different email.'
-          : 'Failed to create account. Please try again.'
-      );
+      setError('Failed to create an account. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -107,7 +84,7 @@ const Register = () => {
           </Typography>
           
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            Join SmartScan to start your learning journey
+            Sign up to start using SmartScan
           </Typography>
 
           {error && (
@@ -117,16 +94,6 @@ const Register = () => {
           )}
 
           <form onSubmit={handleSubmit} style={{ width: '100%' }}>
-            <TextField
-              fullWidth
-              label="Full Name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              margin="normal"
-              required
-              disabled={loading}
-            />
             <TextField
               fullWidth
               label="Email"

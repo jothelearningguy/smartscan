@@ -12,25 +12,15 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { Login as LoginIcon } from '@mui/icons-material';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
-import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-
-  React.useEffect(() => {
-    if (currentUser) {
-      navigate('/scan');
-    }
-  }, [currentUser, navigate]);
 
   const handleChange = (e) => {
     setFormData({
@@ -45,7 +35,8 @@ const Login = () => {
     setError('');
 
     try {
-      await signInWithEmailAndPassword(auth, formData.email, formData.password);
+      // Simulated login - replace with your actual login logic
+      await new Promise(resolve => setTimeout(resolve, 1000));
       navigate('/scan');
     } catch (error) {
       console.error('Login error:', error);
@@ -60,7 +51,8 @@ const Login = () => {
     setError('');
 
     try {
-      await signInWithEmailAndPassword(auth, 'demo@smartscan.com', 'demo123');
+      // Simulated demo login
+      await new Promise(resolve => setTimeout(resolve, 1000));
       navigate('/scan');
     } catch (error) {
       console.error('Demo login error:', error);

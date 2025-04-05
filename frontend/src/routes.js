@@ -63,67 +63,15 @@ const AppRoutes = () => {
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
-        {/* Public routes */}
-        <Route path="/login" element={withLoading(Login)()} />
-        <Route path="/register" element={withLoading(Register)()} />
-        
-        {/* Protected routes */}
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <Navigate to="/scan" replace />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/scan"
-          element={
-            <ProtectedRoute>
-              {withLoading(Scan)()}
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/learn"
-          element={
-            <ProtectedRoute>
-              {withLoading(Learn)()}
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              {withLoading(Profile)()}
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/collections"
-          element={
-            <ProtectedRoute>
-              {withLoading(Collections)()}
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/progress"
-          element={
-            <ProtectedRoute>
-              {withLoading(Progress)()}
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/upload"
-          element={
-            <ProtectedRoute>
-              {withLoading(PhotoUpload)()}
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/" element={<Navigate to="/scan" replace />} />
+        <Route path="/scan" element={<Scan />} />
+        <Route path="/learn" element={<Learn />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/collections" element={<Collections />} />
+        <Route path="/progress" element={<Progress />} />
+        <Route path="/upload" element={<PhotoUpload />} />
         <Route path="*" element={<Navigate to="/scan" replace />} />
       </Routes>
     </Suspense>
