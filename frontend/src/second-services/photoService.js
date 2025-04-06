@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const AIService = require('./aiService');
 const Photo = require('../models/Photo');
-const logger = require('../utils/logger');
+const logger = require('../second-utils/logger');
 
 class PhotoService {
   static async uploadPhoto(file, userId) {

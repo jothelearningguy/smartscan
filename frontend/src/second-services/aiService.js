@@ -1,4 +1,4 @@
-const logger = require('../utils/logger');
+const logger = require('../second-utils/logger');
 
 class AIService {
   static async analyzeImage(imageUrl) {

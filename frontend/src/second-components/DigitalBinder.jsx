@@ -2,8 +2,9 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, 
   TextField, Button, List, ListItem, ListItemText, 
   ListItemSecondaryAction, IconButton, Typography, Box,
-  Divider
+  Divider, Card, CardContent, Grid
 } from '@mui/material';
+import { useState } from 'react';
 import {
   Share as ShareIcon,
   Group as GroupIcon,

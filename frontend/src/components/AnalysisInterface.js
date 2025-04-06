@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './AnalysisInterface.css';
-
+import './styles/AnalysisInterface.css';
 const AnalysisInterface = ({ image, onClose, onSave }) => {
   const navigate = useNavigate();
   const [analysisType, setAnalysisType] = useState(null);

@@ -1,5 +1,5 @@
 const { Sequelize } = require('sequelize');
-const logger = require('../utils/logger');
+const logger = require('../../../frontend/src/second-utils/logger');
 require('dotenv').config();
 
 const sequelize = new Sequelize(

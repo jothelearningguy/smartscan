@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import './CameraInterface.css';
+import './styles/CameraInterface.css';
 
 const CameraInterface = ({ onClose, onCapture }) => {
   const [isCapturing, setIsCapturing] = useState(true);

@@ -31,7 +31,7 @@ import {
 import Tesseract from 'tesseract.js';
 import * as tf from '@tensorflow/tfjs';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist/legacy/build/pdf';
-import styles from './SmartScan.module.css';
+import styles from '../styles/SmartScan.module.css';
 import 'pdfjs-dist/build/pdf.worker.entry';
 import { motion, AnimatePresence } from 'framer-motion';
 import jsPDF from 'jspdf';

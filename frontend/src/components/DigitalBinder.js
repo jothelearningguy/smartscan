@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './DigitalBinder.css';
+import './styles/DigitalBinder.css';
 
 const DigitalBinder = ({ documents, onClose }) => {
   const navigate = useNavigate();

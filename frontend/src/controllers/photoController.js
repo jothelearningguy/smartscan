@@ -1,5 +1,5 @@
-const PhotoService = require('../services/photoService');
-const logger = require('../utils/logger');
+const PhotoService = require('../second-services/photoService');
+const logger = require('../second-utils/logger');
 
 class PhotoController {
   static async uploadPhoto(req, res, next) {

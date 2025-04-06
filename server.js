@@ -3,10 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const connectDB = require('./src/config/db');
-const photoRoutes = require('./src/routes/photoRoutes');
-const errorHandler = require('./src/middleware/errorHandler');
-const logger = require('./src/utils/logger');
+const connectDB = require('./frontend/src/config/db');
+const photoRoutes = require('./frontend/src/second-routes/photoRoutes');
+const errorHandler = require('./frontend/src/middleware/errorHandler');
+const logger = require('./frontend/src/second-utils/logger');
 
 const app = express();
 const port = process.env.PORT || 3001;

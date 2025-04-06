@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import styles from './SmartCan.module.css';
+import styles from '../styles/SmartCan.module.css';
 
 const API_BASE_URL = 'http://localhost:5000/api';
 
